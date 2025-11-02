@@ -47,13 +47,46 @@ const ENLACES_DATA = [
 
 // Noticias y avisos - Añadir contenido real aquí
 const NOTICIAS_DATA = [
+  // --- NUEVAS NOTICIAS (Añadidas el 02/11/2025) ---
   {
-    titulo: '🚨 IMPORTANTE: Nueva Funcionalidad',
+    titulo: '📢 Actualización en Puertas: Añadida Puerta OC',
+    fecha: '02/11/2025',
+    contenido: `Se ha mejorado la visualización de las puertas. Ahora la tabla muestra tres columnas para mayor claridad:
+    <ul style="list-style-type: disc; margin-left: 20px; margin-top: 10px;">
+      <li style="margin-bottom: 5px;">Se extrae la segunda puerta (columna índice 4) del CSV como "Puerta OC".</li>
+      <li style="margin-bottom: 5px;">La <b>Puerta SP</b> se muestra en color <span style="color: #10b981; font-weight: 600;">Verde</span>.</li>
+      <li style="margin-bottom: 5px;">La <b>Puerta OC</b> se muestra en color <span style="color: #0a2e5c; font-weight: 600;">Azul</span>.</li>
+      <li>Este formato se aplica tanto a puertas laborables como festivas.</li>
+    </ul>`
+  },
+  {
+    titulo: '✨ Mejora Visual en "Mis Jornales"',
+    fecha: '02/11/2025',
+    contenido: `Se ha mejorado el indicador de quincenas en la sección "Mis Jornales" para que sea más fácil de identificar:
+    <ul style="list-style-type: disc; margin-left: 20px; margin-top: 10px;">
+      <li style="margin-bottom: 5px;">Se usa un emoji de calendario distinto según la quincena: <b>📅 (para días 1-15)</b> o <b>🗓️ (para días 16 al fin de mes)</b>.</li>
+      <li>El formato de la etiqueta ahora es más claro (ej: "📅 1-15 NOV").</li>
+    </ul>`
+  },
+  {
+    titulo: '📊 Nuevas Estadísticas de Colores en Censo',
+    fecha: '02/11/2025',
+    contenido: `La pestaña "Censo" ahora incluye un nuevo resumen estadístico de chapas por color:
+    <ul style="list-style-type: disc; margin-left: 20px; margin-top: 10px;">
+      <li style="margin-bottom: 5px;">Se muestran 5 tarjetas (Verde, Azul, Amarillo, Naranja, Rojo) justo debajo de la leyenda de colores.</li>
+      <li style="margin-bottom: 5px;">Cada tarjeta muestra la <b>cantidad total</b> de chapas de ese color.</li>
+      <li>También se muestra el <b>porcentaje</b> que representa cada color sobre el total de chapas.</li>
+    </ul>`
+  },
+
+  // --- NOTICIAS ANTERIORES ---
+  {
+    titulo: '🚨 IMPORTANTE: Muestra tu Nombre',
     fecha: '01/11/2025',
     contenido: 'Si quieres que se muestre tu nombre en vez de tu chapa, comunícale tu nombre al administrador.'
   },
   {
-    titulo: '📢 Actualización del Sistema',
+    titulo: '📢 Actualización del Sistema (Jornales)',
     fecha: '01/11/2025',
     contenido: 'Se ha mejorado el sistema de jornales. Ahora puedes exportar a CSV y ver tus jornales organizados por quincenas.'
   }
