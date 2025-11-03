@@ -1,1356 +1,633 @@
-/* Variables de colores del puerto */
-:root {
-  --puerto-blue: #0a2e5c;
-  --puerto-blue-light: #1e4a8a;
-  --puerto-blue-dark: #051937;
-  --puerto-orange: #f97316;
-  --puerto-teal: #14b8a6;
-  --puerto-green: #10b981;
-  --puerto-red: #ef4444;
-  --puerto-yellow: #f59e0b;
+/**
+ * Módulo de integración con Google Sheets
+ * Gestiona la obtención y parseo de datos desde Google Sheets públicas
+ */
 
-  --bg-main: #f1f5f9;
-  --bg-card: #ffffff;
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --border-color: #e2e8f0;
+// Configuración de las hojas de Google Sheets
+const SHEETS_CONFIG = {
+  // ID ÚNICO de la hoja de cálculo (TODAS las pestañas están en este mismo documento)
+  SHEET_ID: '1j-IaOHXoLEP4bK2hjdn2uAYy8a2chqiQSOw4Nfxoyxc',
 
-  --sidebar-width: 280px;
-  --header-height: 70px;
+  // =================================================================
+  // ¡¡¡ IMPORTANTE !!!
+  // Pega aquí el GID de tu nueva hoja "Jornales_Historico"
+  // Lo encuentras en la URL de tu Google Sheet al hacer clic en esa pestaña.
+  GID_JORNALES: '418043978', // <-- REEMPLAZA ESTE NÚMERO
+  // =================================================================
+  
+  // URLs completas para datos que no están en el SHEET_ID principal (o para mayor robustez)
+  // URL de Contrataciones que se usa en getContrataciones
+  URL_CONTRATACIONES_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSTtbkA94xqjf81lsR7bLKKtyES2YBDKs8J2T4UrSEan7e5Z_eaptShCA78R1wqUyYyASJxmHj3gDnY/pub?gid=1388412839&single=true&output=csv',
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-}
+  URL_PUERTAS_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ5bGZDNShEWi1lwx_l1EvOxC0si5kbN8GBxj34rF0FkyGVk6IZOiGk5D91_TZXBHO1mchydFvvUl/pub?gid=3770623&single=true&output=csv',
+  
+  URL_CENSO_LIMPIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1216182924&single=true&output=csv'
+};
 
-/* Reset y base */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg-main);
-  color: var(--text-primary);
-  line-height: 1.6;
-  overflow-x: hidden;
-}
-
-/* Fondo decorativo del puerto */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background:
-    linear-gradient(135deg, rgba(10, 46, 92, 0.03) 0%, rgba(20, 184, 166, 0.02) 100%),
-    url('https://i.imgur.com/bSOecVC.jpeg');
-  background-size: cover;
-  background-position: center;
-  opacity: 0.08;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Header */
-.header-main {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--header-height);
-  background: linear-gradient(135deg, var(--puerto-blue-dark) 0%, var(--puerto-blue) 100%);
-  box-shadow: var(--shadow-lg);
-  z-index: 1000;
-  backdrop-filter: blur(10px);
-}
-
-.header-content {
-  max-width: 1920px;
-  margin: 0 auto;
-  height: 100%;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.header-logo {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.logo-img {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  object-fit: cover;
-  box-shadow: var(--shadow-md);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-}
-
-.logo-text h1 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: white;
-  letter-spacing: -0.02em;
-}
-
-.logo-text p {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-weight: 500;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.menu-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 0.5rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.menu-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: scale(1.05);
-}
-
-.menu-btn svg {
-  width: 24px;
-  height: 24px;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.user-chapa {
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.logout-btn {
-  background: var(--puerto-red);
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.logout-btn:hover {
-  background: #dc2626;
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-/* Sidebar */
-.sidebar {
-  position: fixed;
-  top: var(--header-height);
-  left: 0;
-  width: var(--sidebar-width);
-  height: calc(100vh - var(--header-height));
-  background: linear-gradient(180deg, var(--puerto-blue-dark) 0%, var(--puerto-blue) 100%);
-  box-shadow: var(--shadow-xl);
-  overflow-y: auto;
-  z-index: 900;
-  transition: transform 0.3s ease;
-}
-
-.sidebar-nav {
-  padding: 1.5rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.nav-link {
-  background: transparent;
-  color: rgba(255, 255, 255, 0.85);
-  border: none;
-  padding: 0.875rem 1rem;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  text-align: left;
-  border: 1px solid transparent;
-}
-
-.nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  transform: translateX(5px);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.nav-link.active {
-  background: linear-gradient(135deg, var(--puerto-teal) 0%, var(--puerto-blue-light) 100%);
-  color: white;
-  box-shadow: var(--shadow-md);
-  font-weight: 600;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-/* Sidebar overlay para móvil */
-.sidebar-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 850;
-  display: none;
-  backdrop-filter: blur(2px);
-}
-
-.sidebar-overlay.active {
-  display: block;
-}
-
-/* Main content */
-.main-content {
-  margin-left: var(--sidebar-width);
-  margin-top: var(--header-height);
-  min-height: calc(100vh - var(--header-height));
-  position: relative;
-  z-index: 1;
-}
-
-.container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem;
-}
-
-/* Páginas */
-.page {
-  display: none;
-  animation: fadeIn 0.4s ease;
-}
-
-.page.active {
-  display: block;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+/**
+ * Parsea CSV a array de objetos
+ */
+function parseCSV(csv) {
+  if (!csv || csv.trim() === '') {
+    return [];
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  const lines = csv.split('\n').filter(line => line.trim() !== '');
+  if (lines.length === 0) return [];
+
+  // Reemplazar comillas dobles al inicio/fin del header y limpiar espacios
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+  const data = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length === 0) continue;
+
+    const row = {};
+    headers.forEach((header, index) => {
+      // Asegurarse de que el número de valores no sea menor que el de cabeceras
+      row[header] = values[index] !== undefined ? values[index] : ''; 
+    });
+    data.push(row);
+  }
+
+  return data;
+}
+
+/**
+ * Parsea una línea CSV manejando comillas y comas dentro de campos
+ */
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  result.push(current.trim());
+  return result;
+}
+
+/**
+ * Obtiene datos de una hoja (Usado por getJornales)
+ */
+async function fetchSheetData(sheetId, gid, useCache = true) {
+  const cacheKey = `sheet_${sheetId}_${gid}`;
+  const cacheTimeKey = `sheet_${sheetId}_${gid}_time`;
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+  // Verificar cache
+  if (useCache) {
+    const cached = localStorage.getItem(cacheKey);
+    const cacheTime = localStorage.getItem(cacheTimeKey);
+
+    if (cached && cacheTime) {
+      const age = Date.now() - parseInt(cacheTime);
+      if (age < CACHE_DURATION) {
+        return JSON.parse(cached);
+      }
+    }
+  }
+
+  try {
+    const url = getSheetCSVUrl(sheetId, gid);
+    const response = await fetch(url, {
+      headers: {
+        'Accept-Charset': 'utf-8'
+      },
+      cache: 'no-store' // Forzar a no cachear, ya que tenemos el nuestro
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Asegurar lectura UTF-8
+    const buffer = await response.arrayBuffer();
+    const decoder = new TextDecoder('utf-8');
+    const csv = decoder.decode(buffer);
+    const data = parseCSV(csv);
+
+    // Guardar en cache
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    localStorage.setItem(cacheTimeKey, Date.now().toString());
+
+    return data;
+  } catch (error) {
+    console.error('Error fetching sheet data:', error);
+
+    // Intentar devolver datos en cache aunque estén expirados
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      console.warn('Usando datos en cache expirados debido a error en la carga');
+      return JSON.parse(cached);
+    }
+
+    throw error;
   }
 }
 
-/* Page Hero */
-.page-hero {
-  position: relative;
-  width: 100%;
-  height: 320px;
-  overflow: hidden;
-  margin-bottom: 2rem;
-}
-
-.page-hero.small {
-  height: 200px;
-}
-
-.page-hero img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-}
-
-.page-hero::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(10, 46, 92, 0.8) 0%, rgba(20, 184, 166, 0.6) 100%);
-  z-index: 1;
-}
-
-.page-hero-content {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 2rem;
-  max-width: 1400px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.page-hero-content h2 {
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: white;
-  margin-bottom: 0.5rem;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-  letter-spacing: -0.02em;
-}
-
-.page-hero-content p {
-  font-size: 1.1rem;
-  color: rgba(255, 255, 255, 0.95);
-  font-weight: 500;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
-}
-
-/* Login Page */
-.login-container {
-  min-height: calc(100vh - var(--header-height));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.login-card {
-  background: white;
-  border-radius: 16px;
-  box-shadow: var(--shadow-xl);
-  overflow: hidden;
-  max-width: 480px;
-  width: 100%;
-  border: 1px solid var(--border-color);
-}
-
-.login-hero {
-  position: relative;
-  height: 240px;
-  overflow: hidden;
-}
-
-.login-hero img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.login-hero-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(10, 46, 92, 0.85) 0%, rgba(20, 184, 166, 0.7) 100%);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 2rem;
-  text-align: center;
-}
-
-.login-hero-overlay h2 {
-  font-size: 2rem;
-  font-weight: 800;
-  color: white;
-  margin-bottom: 0.5rem;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-}
-
-.login-hero-overlay p {
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.95);
-  font-weight: 500;
-}
-
-.login-form {
-  padding: 2rem;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-  font-size: 0.95rem;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid var(--border-color);
-  border-radius: 10px;
-  font-size: 1rem;
-  transition: all 0.3s ease;
-  background: var(--bg-main);
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: var(--puerto-teal);
-  background: white;
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
-}
-
-.error-message {
-  color: var(--puerto-red);
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-  display: none;
-}
-
-.error-message.active {
-  display: block;
-}
-
-/* Buttons */
-.btn-primary {
-  background: linear-gradient(135deg, var(--puerto-teal) 0%, var(--puerto-blue) 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  justify-content: center;
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-}
-
-.btn-primary:active {
-  transform: translateY(0);
-}
-
-.btn-large {
-  width: 100%;
-  padding: 1rem 1.5rem;
-  font-size: 1rem;
-}
-
-/* Welcome Card */
-.welcome-card {
-  background: linear-gradient(135deg, var(--puerto-blue) 0%, var(--puerto-teal) 100%);
-  border-radius: 16px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  color: white;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.welcome-card h3 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.welcome-card p {
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-/* Dashboard Grid */
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.dashboard-card {
-  background: white;
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: var(--shadow-md);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid var(--border-color);
-  position: relative;
-  overflow: hidden;
-}
-
-.dashboard-card:hover {
-  transform: translateY(-5px);
-  box-shadow: var(--shadow-xl);
-  border-color: var(--puerto-teal);
-}
-
-.dashboard-card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.dashboard-card-icon svg {
-  width: 24px;
-  height: 24px;
-  color: white;
-}
-
-.dashboard-card-icon.blue { background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); }
-.dashboard-card-icon.green { background: linear-gradient(135deg, #10b981 0%, #047857 100%); }
-.dashboard-card-icon.orange { background: linear-gradient(135deg, #f97316 0%, #c2410c 100%); }
-.dashboard-card-icon.purple { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); }
-.dashboard-card-icon.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-.dashboard-card-icon.teal { background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); }
-
-.dashboard-card h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-}
-
-.dashboard-card p {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-}
-
-.dashboard-card img {
-  width: 100%;
-  height: 140px;
-  object-fit: cover;
-  border-radius: 10px;
-  margin-top: auto;
-}
-
-/* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem;
-  gap: 1rem;
-}
-
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid var(--border-color);
-  border-top-color: var(--puerto-teal);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-state p {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-/* Data Table */
-.data-table {
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-color);
-}
-
-.data-table table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table thead {
-  background: linear-gradient(135deg, var(--puerto-blue-dark) 0%, var(--puerto-blue) 100%);
-}
-
-.data-table th {
-  padding: 1rem;
-  text-align: left;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: white;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.data-table td {
-  padding: 1rem;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-primary);
-  font-size: 0.95rem;
-}
-
-.data-table tbody tr:hover {
-  background: var(--bg-main);
-}
-
-.data-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/* Empty State */
-.empty-state {
-  background: white;
-  border-radius: 12px;
-  padding: 3rem 2rem;
-  text-align: center;
-  box-shadow: var(--shadow-md);
-  border: 2px dashed var(--border-color);
-}
-
-.empty-state svg {
-  width: 64px;
-  height: 64px;
-  color: var(--text-secondary);
-  margin: 0 auto 1rem;
-}
-
-.empty-state h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-}
-
-.empty-state p {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-/* Stats Grid */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.stat-card {
-  background: white;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: var(--shadow-md);
-  border-left: 4px solid var(--puerto-teal);
-}
-
-.stat-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.stat-card.green { border-left-color: var(--puerto-green); }
-.stat-card.blue { border-left-color: var(--puerto-blue); }
-.stat-card.orange { border-left-color: var(--puerto-orange); }
-.stat-card.yellow { border-left-color: var(--puerto-yellow); }
-
-/* Puertas Grid */
-.puertas-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1.5rem;
-}
-
-.puerta-card {
-  background: white;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: var(--shadow-md);
-  border: 2px solid var(--border-color);
-  transition: all 0.3s ease;
-}
-
-.puerta-card.empty {
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border-color: var(--puerto-red);
-}
-
-.puerta-card.assigned {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border-color: var(--puerto-green);
-}
-
-.puerta-jornada {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-}
-
-.puerta-numero {
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: var(--puerto-green);
-}
-
-.puerta-card.empty .puerta-numero {
-  color: var(--puerto-red);
-}
-
-.puerta-status {
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-  font-weight: 600;
-}
-
-/* Nuevos estilos para puertas SP y OC */
-.puerta-detalles {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin: 0.75rem 0;
-}
-
-.puerta-linea {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 6px;
-}
-
-.puerta-label {
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.puerta-linea .puerta-numero {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--puerto-blue);
-}
-
-/* Censo Legend */
-.censo-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-  justify-content: center;
-  padding: 1.5rem;
-  background: white;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-color);
-}
-
-.censo-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.censo-legend-color {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  box-shadow: var(--shadow-sm);
-}
-
-.censo-legend-color.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
-.censo-legend-color.blue { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
-.censo-legend-color.yellow { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
-.censo-legend-color.orange { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
-.censo-legend-color.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-
-/* Censo Grid - Optimizado para 535 chapas */
-.censo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
-  gap: 0.5rem;
-  padding: 0.5rem;
-}
-
-.censo-item {
-  aspect-ratio: 1;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 0.875rem;
-  color: white;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
-  cursor: pointer;
-  min-height: 55px;
-}
-
-.censo-item:hover {
-  transform: scale(1.1);
-  box-shadow: var(--shadow-md);
-  z-index: 10;
-}
-
-.censo-item.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
-.censo-item.blue { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
-.censo-item.yellow { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
-.censo-item.orange { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
-.censo-item.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-
-/* Puertas Section Titles */
-.puertas-section-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 3px solid var(--puerto-blue);
-}
-
-.puerta-card.festiva {
-  border-color: var(--puerto-orange);
-  border-width: 3px;
-}
-
-/* Responsive adjustments for censo */
-@media (max-width: 1200px) {
-  .censo-grid {
-    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+/**
+ * Construye la URL para obtener datos en formato CSV
+ */
+function getSheetCSVUrl(sheetId, gid) {
+  // Usamos el ID de la hoja principal para construir la URL base
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+}
+
+
+/**
+ * API principal para obtener datos
+ */
+const SheetsAPI = {
+  /**
+   * Obtiene las puertas desde CSV directo
+   * (Versión frágil pero funcional, restaurada)
+   */
+  async getPuertas() {
+    try {
+      const puertasURL = SHEETS_CONFIG.URL_PUERTAS_CSV;
+
+      const response = await fetch(puertasURL, {
+        headers: {
+          'Accept-Charset': 'utf-8'
+        },
+        cache: 'no-store' // Evitar caché del navegador
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      const decoder = new TextDecoder('utf-8');
+      const csvText = decoder.decode(buffer);
+
+      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l !== '');
+      const jornadasOrdenadas = ['02-08', '08-14', '14-20', '20-02', 'Festivo'];
+      const primeraPuertaPorJornada = {};
+      const segundaPuertaPorJornada = {};
+      jornadasOrdenadas.forEach(j => {
+        primeraPuertaPorJornada[j] = '';
+        segundaPuertaPorJornada[j] = '';
+      });
+
+      let fecha = '';
+      for (let idx = 0; idx < Math.min(5, lines.length) && !fecha; idx++) {
+        const line = lines[idx];
+        const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
+        for (const col of columns) {
+          if (col && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(col)) {
+            const parts = col.split('/');
+            const dia = parts[0].padStart(2, '0');
+            const mes = parts[1].padStart(2, '0');
+            let anio = parts[2];
+            if (anio.length === 2) anio = '20' + anio;
+            fecha = `${dia}/${mes}/${anio}`;
+            break;
+          }
+        }
+      }
+
+      for (const line of lines) {
+        if (line.includes('No se admiten') || line.includes('!!')) continue;
+        const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
+        if (columns.length < 7) continue;
+        const rawJornada = columns[2];
+        if (!rawJornada) continue;
+        let jornada = rawJornada.replace(/\s+.*/, '');
+        if (jornadasOrdenadas.includes(jornada)) {
+          const primeraPuerta = columns[3];
+          if (primeraPuerta && primeraPuerta !== '' && primeraPuertaPorJornada[jornada] === '') {
+            primeraPuertaPorJornada[jornada] = primeraPuerta;
+          }
+          const segundaPuerta = columns[4];
+          if (segundaPuerta && segundaPuerta !== '' && segundaPuertaPorJornada[jornada] === '') {
+            segundaPuertaPorJornada[jornada] = segundaPuerta;
+          }
+        }
+      }
+
+      const puertas = jornadasOrdenadas.map(jornada => ({
+        jornada: jornada,
+        puertaSP: primeraPuertaPorJornada[jornada],
+        puertaOC: segundaPuertaPorJornada[jornada]
+      }));
+
+      return {
+        fecha: fecha || new Date().toLocaleDateString('es-ES'),
+        puertas: puertas
+      };
+    } catch (error) {
+      console.error('Error obteniendo puertas (LÓGICA ANTIGUA):', error);
+      return this.getMockPuertas();
+    }
+  },
+
+  /**
+   * Obtiene las asignaciones/contrataciones desde CSV directo
+   * (Versión robusta, lee por cabeceras)
+   */
+  async getContrataciones(chapa = null) {
+    const cacheKey = 'contrataciones_data';
+    const cacheTimeKey = 'contrataciones_time';
+    const CACHE_DURATION = 5 * 60 * 1000;
+
+    const cached = localStorage.getItem(cacheKey);
+    const cacheTime = localStorage.getItem(cacheTimeKey);
+    if (cached && cacheTime) {
+      const age = Date.now() - parseInt(cacheTime);
+      if (age < CACHE_DURATION) {
+        console.log('Usando contrataciones desde caché');
+        const data = JSON.parse(cached);
+        return chapa ? data.filter(c => c.chapa === chapa.toString()) : data;
+      }
+    }
+
+    try {
+      const contratacionURL = SHEETS_CONFIG.URL_CONTRATACIONES_CSV;
+      const response = await fetch(contratacionURL, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const csvText = await response.text();
+      const rawData = parseCSV(csvText);
+      if (rawData.length === 0) throw new Error('CSV vacío o sin cabeceras');
+
+      const puestoMap = {
+        'T': 'Trincador', 'TC': 'Trincador de Coches', 'C1': 'Conductor de 1a',
+        'B': 'Conductor de Coches', 'E': 'Especialista'
+      };
+      const output = [];
+
+      rawData.forEach(row => {
+        const cleanRow = {};
+        for (const key in row) {
+            const cleanKey = key.replace(/\r/g, '');
+            cleanRow[cleanKey] = row[key];
+        }
+        const baseData = {
+          fecha: cleanRow['Fecha'] || '', jornada: cleanRow['Jornada'] || '',
+          empresa: cleanRow['Empresa'] || '', parte: cleanRow['Parte'] || '',
+          buque: cleanRow['Buque'] || ''
+        };
+        for (const [colKey, puestoNombre] of Object.entries(puestoMap)) {
+          const chapaValue = cleanRow[colKey]; 
+          if (chapaValue && chapaValue.trim() !== '') {
+            const chapas = chapaValue.split(/[\s,]+/).filter(c => c.trim() !== '');
+            chapas.forEach(chapa => {
+                 output.push({
+                  ...baseData,
+                  chapa: chapa.replace(/\r/g, ''),
+                  puesto: puestoNombre,
+              });
+            });
+          }
+        }
+      });
+      
+      localStorage.setItem(cacheKey, JSON.stringify(output));
+      localStorage.setItem(cacheTimeKey, Date.now().toString());
+
+      if (chapa) {
+        return output.filter(c => c.chapa === chapa.toString());
+      }
+      return output;
+    } catch (error) {
+      console.error('Error obteniendo contrataciones:', error);
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+          console.warn('Usando datos de contrataciones en caché expirados');
+          const data = JSON.parse(cachedData);
+          return chapa ? data.filter(c => c.chapa === chapa.toString()) : data;
+      }
+      return this.getMockContrataciones(chapa);
+    }
+  },
+
+  
+  /**
+   * Obtiene el censo de disponibilidad
+   * (Versión robusta, lee desde URL limpia)
+   */
+  async getCenso() {
+    const cacheKey = 'censo_limpio_data';
+    const cacheTimeKey = 'censo_limpio_time';
+    const CACHE_DURATION = 5 * 60 * 1000; 
+
+    const cached = localStorage.getItem(cacheKey);
+    const cacheTime = localStorage.getItem(cacheTimeKey);
+    if (cached && cacheTime) {
+      const age = Date.now() - parseInt(cacheTime);
+      if (age < CACHE_DURATION) {
+        console.log('Usando censo desde caché');
+        return JSON.parse(cached);
+      }
+    }
+
+    try {
+      const response = await fetch(SHEETS_CONFIG.URL_CENSO_LIMPIO, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      const decoder = new TextDecoder('utf-8');
+      const csvText = decoder.decode(buffer);
+      const data = parseCSV(csvText);
+      
+      const censoItems = data.map(item => {
+        let colorName;
+        const colorVal = item.color ? item.color.replace(/\r/g, '') : '';
+        const colorNum = parseInt(colorVal);
+        switch (colorNum) {
+          case 4: colorName = 'green'; break; case 3: colorName = 'blue'; break;
+          case 2: colorName = 'yellow'; break; case 1: colorName = 'orange'; break;
+          case 0: colorName = 'red'; break; default: colorName = 'green';
+        }
+        return {
+          posicion: parseInt(item.posicion),
+          chapa: item.chapa, 
+          color: colorName
+        };
+      }).filter(item => item.chapa && item.color && !isNaN(item.posicion));
+
+      localStorage.setItem(cacheKey, JSON.stringify(censoItems));
+      localStorage.setItem(cacheTimeKey, Date.now().toString());
+      return censoItems;
+    } catch (error) {
+      console.error('Error obteniendo censo (nuevo método):', error);
+      if (cached) {
+        console.warn('Usando censo de caché expirado por error');
+        return JSON.parse(cached);
+      }
+      throw new Error('No se pudo cargar el censo.');
+    }
+  },
+
+  /**
+   * Obtiene la posición de una chapa específica en el censo
+   */
+  async getPosicionChapa(chapa) {
+    try {
+      const censo = await this.getCenso();
+      const item = censo.find(c => c.chapa === chapa);
+      return item ? item.posicion : null;
+    } catch (error) {
+      console.error('Error obteniendo posición de chapa:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Calcula posiciones hasta contratación
+   */
+  async getPosicionesHastaContratacion(chapa) {
+    try {
+      const posicionUsuario = await this.getPosicionChapa(chapa);
+      if (!posicionUsuario) return null;
+
+      const LIMITE_SP = 449, INICIO_OC = 450, FIN_OC = 535;
+      const esUsuarioSP = posicionUsuario <= LIMITE_SP;
+
+      const puertasResult = await this.getPuertas();
+      const puertas = puertasResult.puertas; 
+
+      const puertasSP = puertas.map(p => parseInt(p.puertaSP)).filter(n => !isNaN(n) && n > 0);
+      const puertasOC = puertas.map(p => parseInt(p.puertaOC)).filter(n => !isNaN(n) && n > 0);
+
+      let posicionesFaltantes;
+      if (esUsuarioSP) {
+        if (puertasSP.length === 0) return null;
+        const ultimaPuertaSP = Math.max(...puertasSP);
+        posicionesFaltantes = (posicionUsuario > ultimaPuertaSP) ?
+          (posicionUsuario - ultimaPuertaSP) :
+          (LIMITE_SP - ultimaPuertaSP) + posicionUsuario;
+      } else {
+        if (puertasOC.length === 0) return null;
+        const ultimaPuertaOC = Math.max(...puertasOC);
+        posicionesFaltantes = (posicionUsuario > ultimaPuertaOC) ?
+          (posicionUsuario - ultimaPuertaOC) :
+          (FIN_OC - ultimaPuertaOC) + (posicionUsuario - INICIO_OC + 1);
+      }
+      return posicionesFaltantes;
+    } catch (error) {
+      console.error('Error calculando posiciones hasta contratación:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Obtiene mensajes del foro desde Google Sheet
+   * (Versión robusta, lee por cabeceras)
+   */
+  async getForoMensajes() {
+    try {
+      const foroURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=464918425&single=true&output=csv';
+      const response = await fetch(foroURL, { cache: 'no-store' });
+      if (!response.ok) {
+        console.warn('⚠️ Foro sheet no disponible (HTTP ' + response.status + ').');
+        return null;
+      }
+      const csvText = await response.text();
+      
+      // Usar parseCSV genérico
+      const data = parseCSV(csvText);
+
+      return data.map((row, index) => {
+        const timestamp = row.Timestamp || row.timestamp;
+        const chapa = row.Chapa || row.chapa;
+        const texto = row.Texto || row.texto;
+
+        let parsedDate = new Date(timestamp);
+        const id = parsedDate.getTime() && !isNaN(parsedDate.getTime())
+          ? parsedDate.getTime()
+          : Date.now() - index * 1000;
+
+        return {
+          id: id,
+          timestamp: timestamp,
+          chapa: chapa,
+          texto: texto
+        };
+      }).filter(m => m.timestamp && m.chapa && m.texto); // Filtrar filas inválidas
+
+    } catch (error) {
+      console.error('❌ Error obteniendo mensajes del foro:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Envía un mensaje al foro usando Google Apps Script
+   */
+  async enviarMensajeForo(chapa, texto) {
+    try {
+      let appsScriptURL = localStorage.getItem('foro_apps_script_url');
+      if (!appsScriptURL || appsScriptURL === '' || appsScriptURL === 'null') {
+        appsScriptURL = 'https://script.google.com/macros/s/AKfycbwL1lFFIbpq4evkRQ6W7MTfF6ywWgWaNad6mphwLHRbGkrbSXlB4eUOm-oaB50dcDnQ8g/exec';
+        localStorage.setItem('foro_apps_script_url', appsScriptURL);
+      }
+      await fetch(appsScriptURL, {
+        method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'addMessage', chapa: chapa, texto: texto,
+          timestamp: new Date().toISOString()
+        })
+      });
+      return true;
+    } catch (error) {
+      console.error('Error enviando mensaje al foro:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Obtiene usuarios desde Google Sheet para validación de login
+   * (Versión robusta, lee por cabeceras)
+   */
+  async getUsuarios() {
+    try {
+      const usuariosURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1704760412&single=true&output=csv';
+      const response = await fetch(usuariosURL, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      
+      const buffer = await response.arrayBuffer();
+      const decoder = new TextDecoder('utf-8');
+      const csvText = decoder.decode(buffer);
+      
+      const data = parseCSV(csvText);
+
+      return data.map(row => {
+        const chapa = row.Chapa || row.chapa;
+        const contrasena = row.Contraseña || row.contraseña || row.Contrasena || row.contrasena;
+        const nombre = row.Nombre || row.nombre;
+        return {
+          chapa: chapa,
+          contrasena: contrasena,
+          nombre: nombre || `Chapa ${chapa}`
+        };
+      }).filter(u => u.chapa && u.contrasena); // Filtrar usuarios inválidos
+    } catch (error) {
+      console.error('Error obteniendo usuarios:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Obtiene el nombre de un usuario por su chapa
+   */
+  async getNombrePorChapa(chapa) {
+    try {
+      const usuariosCache = JSON.parse(localStorage.getItem('usuarios_cache') || '{}');
+      if (usuariosCache[chapa]) {
+        return usuariosCache[chapa];
+      }
+      const usuarios = await this.getUsuarios();
+      const usuario = usuarios.find(u => u.chapa === chapa);
+      if (usuario && usuario.nombre) {
+        usuariosCache[chapa] = usuario.nombre;
+        localStorage.setItem('usuarios_cache', JSON.stringify(usuariosCache));
+        return usuario.nombre;
+      }
+      return `Chapa ${chapa}`;
+    } catch (error) {
+      console.error('Error obteniendo nombre:', error);
+      return `Chapa ${chapa}`;
+    }
+  },
+
+  /**
+   * Obtiene TODOS los jornales de un estibador
+   * (MODIFICADO: Lee del GID_JORNALES configurado)
+   */
+  async getJornales(chapa) {
+    try {
+      // Usa fetchSheetData, que lee por cabecera y usa caché
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_JORNALES);
+
+      // Filtrar TODOS los registros por chapa
+      const jornalesChapa = data.filter(row => {
+        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
+        return rowChapa === chapa.toString().trim();
+      }).map(row => ({
+        // Mapear por cabecera
+        fecha: row.Fecha || row.fecha || '',
+        puesto: row.Puesto || row.puesto || '',
+        jornada: row.Jornada || row.jornada || '',
+        empresa: row.Empresa || row.empresa || '',
+        buque: row.Buque || row.buque || '',
+        parte: row.Parte || row.parte || ''
+      })).filter(item => item.fecha); // Filtrar filas sin fecha
+
+      return jornalesChapa;
+    } catch (error) {
+      console.error('Error obteniendo jornales:', error);
+      return [];
+    }
+  },
+
+  // --- SECCIÓN DE DATOS MOCK (FALLBACKS) ---
+
+  getMockPuertas() {
+    console.warn("--- USANDO DATOS MOCK PARA PUERTAS ---");
+    return {
+      fecha: new Date().toLocaleDateString('es-ES'),
+      puertas: [
+        { jornada: '02-08', puertaSP: '153', puertaOC: '498' },
+        { jornada: '08-14', puertaSP: '153', puertaOC: '498' },
+        { jornada: '14-20', puertaSP: '', puertaOC: '' },
+        { jornada: '20-02', puertaSP: '', puertaOC: '' },
+        { jornada: 'Festivo', puertaSP: '173', puertaOC: '528' }
+      ]
+    };
+  },
+  getMockContrataciones(chapa = null) {
+    console.warn("--- USANDO DATOS MOCK PARA CONTRATACIÓN ---");
+    const today = new Date().toLocaleDateString('es-ES');
+    const allData = [
+      { fecha: today, chapa: '221', puesto: 'Conductor de 1ª', jornada: '20-02', empresa: 'APM', buque: 'ODYSSEUS', parte: '1' },
+      { fecha: today, chapa: '330', puesto: 'Conductor de 1ª', jornada: '20-02', empresa: 'APM', buque: 'ODYSSEUS', parte: '1' },
+      { fecha: today, chapa: '190', puesto: 'Especialista', jornada: '14-20', empresa: 'MSC', buque: 'MSC SARA', parte: '2' }
+    ];
+    if (chapa) return allData.filter(c => c.chapa === chapa.toString());
+    return allData;
+  },
+  getMockCenso() {
+    console.error("--- ERROR: NO SE PUDO CARGAR CENSO, MOCK DESHABILITADO ---");
+    throw new Error("El mock de Censo está deshabilitado. La carga real falló.");
+  },
+  getMockJornales(chapa) {
+    console.warn("--- USANDO DATOS MOCK PARA JORNALES ---");
+    return [{ chapa: chapa, quincena: 'Oct 1-15', jornales: 7, horas: 42, nocturnos: 2, festivos: 1 }];
   }
-  .censo-item {
-    font-size: 0.8rem;
-    min-height: 50px;
-  }
+};
+
+/**
+ * Limpia el cache de datos
+ */
+function clearSheetsCache() {
+  const keys = Object.keys(localStorage);
+  keys.forEach(key => {
+    // Limpiamos todo lo relacionado con sheets y datos
+    if (key.startsWith('sheet_') || key.startsWith('censo_') || key.startsWith('puertas_') || key.startsWith('contrataciones_')) {
+      localStorage.removeItem(key);
+    }
+  });
+  console.log('Cache de sheets limpiado');
 }
 
-@media (max-width: 768px) {
-  .censo-grid {
-    grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
-    gap: 0.4rem;
-  }
-  .censo-item {
-    font-size: 0.75rem;
-    min-height: 45px;
-  }
-}
-
-@media (max-width: 480px) {
-  .censo-grid {
-    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-    gap: 0.3rem;
-  }
-  .censo-item {
-    font-size: 0.7rem;
-    min-height: 40px;
-    border-radius: 6px;
-  }
-}
-
-/* Enlaces */
-.enlaces-section {
-  margin-bottom: 2.5rem;
-}
-
-.enlaces-section h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid var(--border-color);
-}
-
-.enlaces-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.enlace-btn {
-  background: white;
-  border: 2px solid var(--border-color);
-  border-radius: 10px;
-  padding: 1rem;
-  text-align: center;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-decoration: none;
-  color: var(--text-primary);
-  display: block;
-}
-
-.enlace-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-md);
-}
-
-.enlace-btn.blue { border-color: #3b82f6; color: #1e40af; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); }
-.enlace-btn.yellow { border-color: #f59e0b; color: #92400e; background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); }
-.enlace-btn.orange { border-color: #f97316; color: #9a3412; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); }
-.enlace-btn.red { border-color: #ef4444; color: #991b1b; background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); }
-.enlace-btn.green { border-color: #10b981; color: #065f46; background: linear-gradient(135deg, #f0fdf4 0%, #d1fae5 100%); }
-.enlace-btn.gray { border-color: #6b7280; color: #374151; background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%); }
-
-/* Noticias */
-.noticia-card {
-  background: white;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: var(--shadow-md);
-  border-left: 4px solid var(--puerto-blue);
-  transition: all 0.3s ease;
-}
-
-.noticia-card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateX(5px);
-}
-
-.noticia-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-  gap: 1rem;
-}
-
-.noticia-titulo {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.noticia-fecha {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.noticia-contenido {
-  color: var(--text-secondary);
-  line-height: 1.7;
-  font-size: 0.95rem;
-}
-
-/* Foro */
-.foro-container {
-  padding-bottom: 120px !important;
-}
-
-.foro-messages {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.foro-message {
-  display: flex;
-  gap: 1rem;
-  animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.foro-message.own {
-  flex-direction: row-reverse;
-}
-
-.foro-message-content {
-  max-width: 70%;
-  background: white;
-  border-radius: 12px;
-  padding: 1rem;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
-}
-
-.foro-message.own .foro-message-content {
-  background: linear-gradient(135deg, var(--puerto-blue) 0%, var(--puerto-teal) 100%);
-  color: white;
-  border: none;
-}
-
-.foro-message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-  gap: 1rem;
-}
-
-.foro-message-chapa {
-  font-weight: 700;
-  font-size: 0.875rem;
-}
-
-.foro-message.own .foro-message-chapa {
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.foro-message-time {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.foro-message.own .foro-message-time {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.foro-message-text {
-  font-size: 0.95rem;
-  line-height: 1.5;
-  word-wrap: break-word;
-}
-
-.foro-message.own .foro-message-text {
-  color: white;
-}
-
-/* Foro Composer */
-.foro-composer {
-  position: fixed;
-  bottom: 0;
-  left: var(--sidebar-width);
-  right: 0;
-  background: white;
-  border-top: 2px solid var(--border-color);
-  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  padding: 1rem;
-}
-
-.foro-composer-inner {
-  max-width: 1400px;
-  margin: 0 auto;
-  display: flex;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-#foro-input {
-  flex: 1;
-  border: 2px solid var(--border-color);
-  border-radius: 10px;
-  padding: 0.875rem;
-  font-size: 0.95rem;
-  font-family: inherit;
-  resize: none;
-  transition: all 0.3s ease;
-}
-
-#foro-input:focus {
-  outline: none;
-  border-color: var(--puerto-teal);
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .sidebar {
-    transform: translateX(-100%);
-  }
-
-  .sidebar.active {
-    transform: translateX(0);
-  }
-
-  .main-content {
-    margin-left: 0;
-  }
-
-  .foro-composer {
-    left: 0;
-  }
-
-  .page-hero-content h2 {
-    font-size: 1.75rem;
-  }
-
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .foro-message-content {
-    max-width: 85%;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .user-chapa {
-    display: none;
-  }
-
-  .logo-text p {
-    display: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .container {
-    padding: 1rem;
-  }
-
-  .page-hero {
-    height: 180px;
-  }
-
-  .page-hero.small {
-    height: 140px;
-  }
-
-  .page-hero-content h2 {
-    font-size: 1.5rem;
-  }
-
-  .page-hero-content p {
-    font-size: 0.9rem;
-  }
-
-  .censo-grid {
-    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
-  }
-}
-
-/* Utilidades */
-.hidden {
-  display: none !important;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.mt-4 { margin-top: 1rem; }
-.mb-4 { margin-bottom: 1rem; }
-
-/* Scrollbar personalizada */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-main);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--puerto-blue-light);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--puerto-blue);
-}
-
-/* Progress bar para jornales */
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: var(--border-color);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-top: 0.5rem;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--puerto-blue) 0%, var(--puerto-teal) 100%);
-  border-radius: 4px;
-  transition: width 0.5s ease;
-}
-
-/* Settings button */
-.settings-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  padding: 0.5rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 0.5rem;
-}
-
-.settings-btn:hover {
-  background: var(--bg-secondary);
-  color: var(--puerto-blue);
-}
-
-/* Modal overlay */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-  padding: 1rem;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 16px;
-  max-width: 500px;
-  width: 100%;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: modalSlideIn 0.3s ease;
-}
-
-@keyframes modalSlideIn {
-  from {
-    transform: translateY(-50px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  padding: 1.5rem;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 2rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-  width: 2rem;
-  height: 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.modal-close:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-.modal-footer {
-  padding: 1.5rem;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-}
-
-.success-message {
-  color: var(--puerto-green);
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-  display: none;
-}
-
-.success-message.active {
-  display: block;
-}
-
-.btn-secondary {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.btn-secondary:hover {
-  background: var(--text-secondary);
-  color: white;
-}
+// Exponer API globalmente
+window.SheetsAPI = SheetsAPI;
+window.clearSheetsCache = clearSheetsCache;
