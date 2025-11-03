@@ -1,6 +1,14 @@
 /**
  * Módulo de integración con Google Sheets
  * Gestiona la obtención y parseo de datos desde Google Sheets públicas
+ *
+ * --- ESTADO DE ROBUSTEZ (VERSIÓN "CENSO LIMPIO") ---
+ * - getCenso: ROBUSTO (Lee por cabeceras desde censo_limpio)
+ * - getPuertas: FRÁGIL (Depende de índices de columna)
+ * - getContrataciones: FRÁGIL (Depende de índices de columna)
+ * - getUsuarios: FRÁGIL (Depende de índices de columna)
+ * - getForoMensajes: FRÁGIL (Parser manual)
+ * - getJornales: ROBUSTO (Lee por cabeceras, pero app.js no lo usa para historial)
  */
 
 // Configuración de las hojas de Google Sheets
@@ -8,21 +16,21 @@ const SHEETS_CONFIG = {
   // ID ÚNICO de la hoja de cálculo (TODAS las pestañas están en este mismo documento)
   SHEET_ID: '1j-IaOHXoLEP4bK2hjdn2uAYy8a2chqiQSOw4Nfxoyxc',
 
-  // =================================================================
-  // ¡¡¡ IMPORTANTE !!!
-  // Pega aquí el GID de tu nueva hoja "Jornales_Historico"
-  // Lo encuentras en la URL de tu Google Sheet al hacer clic en esa pestaña.
-  GID_JORNALES: '418043978', // <-- REEMPLAZA ESTE NÚMERO
-  // =================================================================
+  // GIDs de las diferentes pestañas
+  GID_JORNALES: '1885242510',      // Pestaña: Mis Jornales
+  GID_CONTRATACION: '1304645770',  // Pestaña: Contrata_Glide
+  GID_PUERTAS: '1650839211',       // Pestaña: Puertas (No se usa, getPuertas usa URL hardcodeada)
   
-  // URLs completas para datos que no están en el SHEET_ID principal (o para mayor robustez)
-  // URL de Contrataciones que se usa en getContrataciones
-  URL_CONTRATACIONES_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSTtbkA94xqjf81lsR7bLKKtyES2YBDKs8J2T4UrSEan7e5Z_eaptShCA78R1wqUyYyASJxmHj3gDnY/pub?gid=1388412839&single=true&output=csv',
-
-  URL_PUERTAS_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ5bGZDNShEWi1lwx_l1EvOxC0si5kbN8GBxj34rF0FkyGVk6IZOiGk5D91_TZXBHO1mchydFvvUl/pub?gid=3770623&single=true&output=csv',
-  
+  // URL de la hoja "censo_limpio"
   URL_CENSO_LIMPIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1216182924&single=true&output=csv'
 };
+
+/**
+ * Construye la URL para obtener datos en formato CSV
+ */
+function getSheetCSVUrl(sheetId, gid) {
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+}
 
 /**
  * Parsea CSV a array de objetos
@@ -35,7 +43,6 @@ function parseCSV(csv) {
   const lines = csv.split('\n').filter(line => line.trim() !== '');
   if (lines.length === 0) return [];
 
-  // Reemplazar comillas dobles al inicio/fin del header y limpiar espacios
   const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
   const data = [];
 
@@ -45,8 +52,7 @@ function parseCSV(csv) {
 
     const row = {};
     headers.forEach((header, index) => {
-      // Asegurarse de que el número de valores no sea menor que el de cabeceras
-      row[header] = values[index] !== undefined ? values[index] : ''; 
+      row[header] = values[index] || '';
     });
     data.push(row);
   }
@@ -86,7 +92,7 @@ function parseCSVLine(line) {
 }
 
 /**
- * Obtiene datos de una hoja (Usado por getJornales)
+ * Obtiene datos de una hoja
  */
 async function fetchSheetData(sheetId, gid, useCache = true) {
   const cacheKey = `sheet_${sheetId}_${gid}`;
@@ -111,8 +117,7 @@ async function fetchSheetData(sheetId, gid, useCache = true) {
     const response = await fetch(url, {
       headers: {
         'Accept-Charset': 'utf-8'
-      },
-      cache: 'no-store' // Forzar a no cachear, ya que tenemos el nuestro
+      }
     });
 
     if (!response.ok) {
@@ -145,190 +150,279 @@ async function fetchSheetData(sheetId, gid, useCache = true) {
 }
 
 /**
- * Construye la URL para obtener datos en formato CSV
- */
-function getSheetCSVUrl(sheetId, gid) {
-  // Usamos el ID de la hoja principal para construir la URL base
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
-}
-
-
-/**
  * API principal para obtener datos
  */
 const SheetsAPI = {
   /**
-   * Obtiene las puertas desde CSV directo
-   * (Versión frágil pero funcional, restaurada)
+   * [FRÁGIL] Obtiene las puertas desde CSV directo
    */
   async getPuertas() {
     try {
-      const puertasURL = SHEETS_CONFIG.URL_PUERTAS_CSV;
+      const puertasURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ5bGZDNShEWi1lwx_l1EvOxC0si5kbN8GBxj34rF0FkyGVk6IZOiGk5D91_TZXBHO1mchydFvvUl/pub?gid=3770623&single=true&output=csv';
 
       const response = await fetch(puertasURL, {
         headers: {
           'Accept-Charset': 'utf-8'
         },
-        cache: 'no-store' // Evitar caché del navegador
+        cache: 'no-store' // Evitar caché del navegador para puertas
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      // Asegurar lectura UTF-8
       const buffer = await response.arrayBuffer();
       const decoder = new TextDecoder('utf-8');
       const csvText = decoder.decode(buffer);
+      console.log('=== PUERTAS CSV RAW (primeros 300 chars) ===');
+      console.log(csvText.substring(0, 300));
 
+      // Dividir en líneas y limpiar
       const lines = csvText.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+      // Definir el orden fijo de jornadas
       const jornadasOrdenadas = ['02-08', '08-14', '14-20', '20-02', 'Festivo'];
-      const primeraPuertaPorJornada = {};
-      const segundaPuertaPorJornada = {};
+
+      // Inicializar objetos para almacenar las puertas de cada jornada
+      const primeraPuertaPorJornada = {};  // Puerta SP (índice 3)
+      const segundaPuertaPorJornada = {};  // Puerta OC (índice 4)
       jornadasOrdenadas.forEach(j => {
         primeraPuertaPorJornada[j] = '';
         segundaPuertaPorJornada[j] = '';
       });
 
       let fecha = '';
+
+      // PRIMERO: Buscar la fecha en las primeras 5 líneas (sin importar el número de columnas)
       for (let idx = 0; idx < Math.min(5, lines.length) && !fecha; idx++) {
         const line = lines[idx];
         const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
+
         for (const col of columns) {
           if (col && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(col)) {
+            // Formatear fecha: 3/11/25 → 03/11/2025
             const parts = col.split('/');
             const dia = parts[0].padStart(2, '0');
             const mes = parts[1].padStart(2, '0');
             let anio = parts[2];
-            if (anio.length === 2) anio = '20' + anio;
+            // Convertir año de 2 dígitos a 4 dígitos
+            if (anio.length === 2) {
+              anio = '20' + anio;
+            }
             fecha = `${dia}/${mes}/${anio}`;
+            console.log('Fecha encontrada y formateada:', fecha, 'en línea', idx);
             break;
           }
         }
       }
 
+      // SEGUNDO: Procesar las puertas
       for (const line of lines) {
+        // Saltar líneas de advertencia
         if (line.includes('No se admiten') || line.includes('!!')) continue;
+
+        // Dividir manualmente por comas y limpiar
         const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
-        if (columns.length < 7) continue;
-        const rawJornada = columns[2];
+
+        if (columns.length < 7) {
+          continue;
+        }
+
+        const rawJornada = columns[2]; // La jornada está en la columna 3 (índice 2)
         if (!rawJornada) continue;
-        let jornada = rawJornada.replace(/\s+.*/, '');
+
+        let jornada = rawJornada.replace(/\s+.*/, ''); // limpia "Festivo " → "Festivo"
+
+        // Solo procesar si es turno válido o Festivo
         if (jornadasOrdenadas.includes(jornada)) {
+          // Tomar la PRIMERA puerta SP (índice 3 = columna 4)
           const primeraPuerta = columns[3];
           if (primeraPuerta && primeraPuerta !== '' && primeraPuertaPorJornada[jornada] === '') {
+            // Solo asignar si aún no tiene valor
             primeraPuertaPorJornada[jornada] = primeraPuerta;
+            console.log(`Jornada ${jornada}: puerta SP ${primeraPuerta}`);
           }
+
+          // Tomar la SEGUNDA puerta OC (índice 4 = columna 5)
           const segundaPuerta = columns[4];
           if (segundaPuerta && segundaPuerta !== '' && segundaPuertaPorJornada[jornada] === '') {
+            // Solo asignar si aún no tiene valor
             segundaPuertaPorJornada[jornada] = segundaPuerta;
+            console.log(`Jornada ${jornada}: puerta OC ${segundaPuerta}`);
           }
         }
       }
 
+      // Construir el array de puertas en el orden fijo
       const puertas = jornadasOrdenadas.map(jornada => ({
         jornada: jornada,
         puertaSP: primeraPuertaPorJornada[jornada],
         puertaOC: segundaPuertaPorJornada[jornada]
       }));
 
+      console.log('=== PUERTAS FINALES ===');
+      console.log('Fecha:', fecha);
+      console.log('Puertas:', puertas);
+
       return {
         fecha: fecha || new Date().toLocaleDateString('es-ES'),
         puertas: puertas
       };
+
     } catch (error) {
-      console.error('Error obteniendo puertas (LÓGICA ANTIGUA):', error);
+      console.error('Error obteniendo puertas:', error);
       return this.getMockPuertas();
     }
   },
 
   /**
-   * Obtiene las asignaciones/contrataciones desde CSV directo
-   * (Versión robusta, lee por cabeceras)
+   * [FRÁGIL] Obtiene las asignaciones/contrataciones desde CSV directo con formato PIVOTADO
    */
   async getContrataciones(chapa = null) {
-    const cacheKey = 'contrataciones_data';
-    const cacheTimeKey = 'contrataciones_time';
-    const CACHE_DURATION = 5 * 60 * 1000;
-
-    const cached = localStorage.getItem(cacheKey);
-    const cacheTime = localStorage.getItem(cacheTimeKey);
-    if (cached && cacheTime) {
-      const age = Date.now() - parseInt(cacheTime);
-      if (age < CACHE_DURATION) {
-        console.log('Usando contrataciones desde caché');
-        const data = JSON.parse(cached);
-        return chapa ? data.filter(c => c.chapa === chapa.toString()) : data;
-      }
-    }
-
     try {
-      const contratacionURL = SHEETS_CONFIG.URL_CONTRATACIONES_CSV;
-      const response = await fetch(contratacionURL, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const csvText = await response.text();
-      const rawData = parseCSV(csvText);
-      if (rawData.length === 0) throw new Error('CSV vacío o sin cabeceras');
+      const contratacionURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSTtbkA94xqjf81lsR7bLKKtyES2YBDKs8J2T4UrSEan7e5Z_eaptShCA78R1wqUyYyASJxmHj3gDnY/pub?gid=1388412839&single=true&output=csv';
 
+      const response = await fetch(contratacionURL, { cache: 'no-store' }); // Evitar caché
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const csvText = await response.text();
+      console.log('=== CONTRATACIÓN CSV RAW (primeros 300 chars) ===');
+      console.log(csvText.substring(0, 300));
+
+      // Dividir en líneas y limpiar
+      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+      if (lines.length === 0) {
+        throw new Error('CSV vacío');
+      }
+
+      // Mapeo de especialidades (según n8n)
       const puestoMap = {
-        'T': 'Trincador', 'TC': 'Trincador de Coches', 'C1': 'Conductor de 1a',
-        'B': 'Conductor de Coches', 'E': 'Especialista'
+        'T': 'Trincador',
+        'TC': 'Trincador de Coches',
+        'C1': 'Conductor de 1a',
+        'B': 'Conductor de Coches',
+        'E': 'Especialista'
       };
+
+      // Parsear la primera línea para obtener los índices de las columnas
+      const headerLine = lines[0];
+      const headers = [];
+      let current = '';
+      for (let i = 0; i < headerLine.length; i++) {
+        if (headerLine[i] === ',') {
+          headers.push(current);
+          current = '';
+        } else {
+          current += headerLine[i];
+        }
+      }
+      headers.push(current);
+
+      console.log('Headers:', headers);
+
+      // Encontrar índices de las columnas relevantes
+      const fechaIdx = headers.indexOf('Fecha');
+      const jornadaIdx = headers.indexOf('Jornada');
+      const empresaIdx = headers.indexOf('Empresa');
+      const parteIdx = headers.indexOf('Parte');
+      const buqueIdx = headers.indexOf('Buque');
+      const tIdx = headers.indexOf('T');
+      const tcIdx = headers.indexOf('TC');
+      const c1Idx = headers.indexOf('C1');
+      const bIdx = headers.indexOf('B');
+      const eIdx = headers.indexOf('E');
+
+      console.log('Índices:', { fechaIdx, jornadaIdx, empresaIdx, parteIdx, buqueIdx, tIdx, tcIdx, c1Idx, bIdx, eIdx });
+
+      // Procesar filas (saltar la cabecera)
       const output = [];
 
-      rawData.forEach(row => {
-        const cleanRow = {};
-        for (const key in row) {
-            const cleanKey = key.replace(/\r/g, '');
-            cleanRow[cleanKey] = row[key];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        // Dividir manualmente la línea respetando comillas
+        const fields = [];
+        let current = '';
+        let inQuotes = false;
+        for (let j = 0; j < line.length; j++) {
+          const char = line[j];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            fields.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
         }
-        const baseData = {
-          fecha: cleanRow['Fecha'] || '', jornada: cleanRow['Jornada'] || '',
-          empresa: cleanRow['Empresa'] || '', parte: cleanRow['Parte'] || '',
-          buque: cleanRow['Buque'] || ''
-        };
+        fields.push(current.trim());
+
+        // Saltar si la fila no tiene suficientes columnas
+        if (fields.length <= Math.max(eIdx, bIdx, c1Idx, tcIdx, tIdx)) continue;
+
+        // Obtener valores de las columnas clave
+        const fecha = fields[fechaIdx] || '';
+        const jornada = fields[jornadaIdx] || '';
+        const empresa = fields[empresaIdx] || '';
+        const parte = fields[parteIdx] || '';
+        const buque = fields[buqueIdx] || '';
+
+        // Iterar sobre las columnas de puestos
         for (const [colKey, puestoNombre] of Object.entries(puestoMap)) {
-          const chapaValue = cleanRow[colKey]; 
+          let idx;
+          if (colKey === 'T') idx = tIdx;
+          if (colKey === 'TC') idx = tcIdx;
+          if (colKey === 'C1') idx = c1Idx;
+          if (colKey === 'B') idx = bIdx;
+          if (colKey === 'E') idx = eIdx;
+
+          const chapaValue = fields[idx];
           if (chapaValue && chapaValue.trim() !== '') {
-            const chapas = chapaValue.split(/[\s,]+/).filter(c => c.trim() !== '');
-            chapas.forEach(chapa => {
-                 output.push({
-                  ...baseData,
-                  chapa: chapa.replace(/\r/g, ''),
-                  puesto: puestoNombre,
-              });
+            output.push({
+              fecha: fecha,
+              chapa: chapaValue.trim(),
+              puesto: puestoNombre,
+              jornada: jornada,
+              empresa: empresa,
+              buque: buque,
+              parte: parte
             });
           }
         }
-      });
-      
-      localStorage.setItem(cacheKey, JSON.stringify(output));
-      localStorage.setItem(cacheTimeKey, Date.now().toString());
-
-      if (chapa) {
-        return output.filter(c => c.chapa === chapa.toString());
       }
+
+      console.log('=== CONTRATACIONES FINALES ===');
+      console.log('Total:', output.length);
+
+      // Filtrar por chapa si se proporciona
+      if (chapa) {
+        const filtered = output.filter(c => c.chapa === chapa.toString());
+        console.log(`Contrataciones para chapa ${chapa}:`, filtered);
+        return filtered;
+      }
+
       return output;
+
     } catch (error) {
       console.error('Error obteniendo contrataciones:', error);
-      const cachedData = localStorage.getItem(cacheKey);
-      if (cachedData) {
-          console.warn('Usando datos de contrataciones en caché expirados');
-          const data = JSON.parse(cachedData);
-          return chapa ? data.filter(c => c.chapa === chapa.toString()) : data;
-      }
       return this.getMockContrataciones(chapa);
     }
   },
 
-  
   /**
-   * Obtiene el censo de disponibilidad
-   * (Versión robusta, lee desde URL limpia)
+   * [ROBUSTO] Obtiene el censo de disponibilidad
+   * Formato del CSV: lee la URL del censo limpio y parsea usando cabeceras.
+   * Cabeceras esperadas: posicion, chapa, color
    */
   async getCenso() {
+    // Clave de caché única para esta función
     const cacheKey = 'censo_limpio_data';
     const cacheTimeKey = 'censo_limpio_time';
-    const CACHE_DURATION = 5 * 60 * 1000; 
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 
+    // 1. Verificar cache
     const cached = localStorage.getItem(cacheKey);
     const cacheTime = localStorage.getItem(cacheTimeKey);
     if (cached && cacheTime) {
@@ -340,48 +434,76 @@ const SheetsAPI = {
     }
 
     try {
-      const response = await fetch(SHEETS_CONFIG.URL_CENSO_LIMPIO, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      console.log('Obteniendo censo desde la nueva URL...');
+      // 2. Obtener el texto CSV
+      const response = await fetch(SHEETS_CONFIG.URL_CENSO_LIMPIO, {
+        cache: 'no-store' // No cachear esta petición
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const buffer = await response.arrayBuffer();
       const decoder = new TextDecoder('utf-8');
       const csvText = decoder.decode(buffer);
+
+      // 3. Parsear el CSV usando la función robusta
       const data = parseCSV(csvText);
       
+      // 4. Mapear y limpiar los datos
       const censoItems = data.map(item => {
+        // Mapear código de color a nombre
         let colorName;
+        // Limpiar el valor de color de '\r'
         const colorVal = item.color ? item.color.replace(/\r/g, '') : '';
         const colorNum = parseInt(colorVal);
+
         switch (colorNum) {
-          case 4: colorName = 'green'; break; case 3: colorName = 'blue'; break;
-          case 2: colorName = 'yellow'; break; case 1: colorName = 'orange'; break;
-          case 0: colorName = 'red'; break; default: colorName = 'green';
+          case 4: colorName = 'green'; break;
+          case 3: colorName = 'blue'; break;
+          case 2: colorName = 'yellow'; break;
+          case 1: colorName = 'orange'; break;
+          case 0: colorName = 'red'; break;
+          default: colorName = 'green'; // Fallback por si acaso
         }
+
         return {
           posicion: parseInt(item.posicion),
-          chapa: item.chapa, 
+          chapa: item.chapa, // Mantener como string
           color: colorName
         };
-      }).filter(item => item.chapa && item.color && !isNaN(item.posicion));
+      }).filter(item => item.chapa && item.color && !isNaN(item.posicion)); // Asegurar que los datos son válidos
 
+      console.log('=== CENSO PROCESADO (NUEVO MÉTODO) ===');
+      console.log('Total de chapas:', censoItems.length);
+      
+      // 5. Guardar en caché
       localStorage.setItem(cacheKey, JSON.stringify(censoItems));
       localStorage.setItem(cacheTimeKey, Date.now().toString());
+
       return censoItems;
+
     } catch (error) {
       console.error('Error obteniendo censo (nuevo método):', error);
+      
+      // Intentar devolver caché expirado si falla
       if (cached) {
         console.warn('Usando censo de caché expirado por error');
         return JSON.parse(cached);
       }
+      
+      // Si no hay caché y falla, lanzar error
       throw new Error('No se pudo cargar el censo.');
     }
   },
 
   /**
    * Obtiene la posición de una chapa específica en el censo
+   * (Actualizado para usar el nuevo getCenso)
    */
   async getPosicionChapa(chapa) {
     try {
-      const censo = await this.getCenso();
+      const censo = await this.getCenso(); // Llama a la nueva función
       const item = censo.find(c => c.chapa === chapa);
       return item ? item.posicion : null;
     } catch (error) {
@@ -392,36 +514,75 @@ const SheetsAPI = {
 
   /**
    * Calcula posiciones hasta contratación
+   * (Actualizado para usar el nuevo getPosicionChapa y el nuevo getPuertas)
    */
   async getPosicionesHastaContratacion(chapa) {
     try {
+      // Obtener posición del usuario
       const posicionUsuario = await this.getPosicionChapa(chapa);
-      if (!posicionUsuario) return null;
+      if (!posicionUsuario) {
+        return null;
+      }
 
-      const LIMITE_SP = 449, INICIO_OC = 450, FIN_OC = 535;
+      // Determinar si el usuario está en censo SP o OC
+      const LIMITE_SP = 449;
+      const INICIO_OC = 450;
+      const FIN_OC = 535;
+
       const esUsuarioSP = posicionUsuario <= LIMITE_SP;
 
+      // Obtener puertas
       const puertasResult = await this.getPuertas();
       const puertas = puertasResult.puertas; 
 
-      const puertasSP = puertas.map(p => parseInt(p.puertaSP)).filter(n => !isNaN(n) && n > 0);
-      const puertasOC = puertas.map(p => parseInt(p.puertaOC)).filter(n => !isNaN(n) && n > 0);
+      // Separar puertas SP y OC
+      const puertasSP = puertas
+        .map(p => parseInt(p.puertaSP))
+        .filter(n => !isNaN(n) && n > 0);
+
+      const puertasOC = puertas
+        .map(p => parseInt(p.puertaOC))
+        .filter(n => !isNaN(n) && n > 0);
 
       let posicionesFaltantes;
+
       if (esUsuarioSP) {
-        if (puertasSP.length === 0) return null;
+        // Usuario en censo SP (1-449)
+        if (puertasSP.length === 0) {
+          return null; // No hay puertas SP contratadas
+        }
+
         const ultimaPuertaSP = Math.max(...puertasSP);
-        posicionesFaltantes = (posicionUsuario > ultimaPuertaSP) ?
-          (posicionUsuario - ultimaPuertaSP) :
-          (LIMITE_SP - ultimaPuertaSP) + posicionUsuario;
+
+        // Calcular distancia circular en censo SP
+        if (posicionUsuario > ultimaPuertaSP) {
+          // Usuario está después de la última puerta
+          posicionesFaltantes = posicionUsuario - ultimaPuertaSP;
+        } else {
+          // Usuario está antes de la última puerta (dar la vuelta en censo SP)
+          posicionesFaltantes = (LIMITE_SP - ultimaPuertaSP) + posicionUsuario;
+        }
+
       } else {
-        if (puertasOC.length === 0) return null;
+        // Usuario en censo OC (450-535)
+        if (puertasOC.length === 0) {
+          return null; // No hay puertas OC contratadas
+        }
+
         const ultimaPuertaOC = Math.max(...puertasOC);
-        posicionesFaltantes = (posicionUsuario > ultimaPuertaOC) ?
-          (posicionUsuario - ultimaPuertaOC) :
-          (FIN_OC - ultimaPuertaOC) + (posicionUsuario - INICIO_OC + 1);
+
+        // Calcular distancia circular en censo OC
+        if (posicionUsuario > ultimaPuertaOC) {
+          // Usuario está después de la última puerta
+          posicionesFaltantes = posicionUsuario - ultimaPuertaOC;
+        } else {
+          // Usuario está antes de la última puerta (dar la vuelta en censo OC)
+          posicionesFaltantes = (FIN_OC - ultimaPuertaOC) + (posicionUsuario - INICIO_OC + 1);
+        }
       }
+
       return posicionesFaltantes;
+
     } catch (error) {
       console.error('Error calculando posiciones hasta contratación:', error);
       return null;
@@ -429,96 +590,214 @@ const SheetsAPI = {
   },
 
   /**
-   * Obtiene mensajes del foro desde Google Sheet
-   * (Versión robusta, lee por cabeceras)
+   * [FRÁGIL] Obtiene mensajes del foro desde Google Sheet
    */
   async getForoMensajes() {
     try {
+      // URL del CSV del foro publicado
       const foroURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=464918425&single=true&output=csv';
+
       const response = await fetch(foroURL, { cache: 'no-store' });
       if (!response.ok) {
-        console.warn('⚠️ Foro sheet no disponible (HTTP ' + response.status + ').');
-        return null;
+        console.warn('⚠️ Foro sheet no disponible (HTTP ' + response.status + '). Asegúrate de publicar la pestaña "foro" como CSV en Archivo → Compartir → Publicar en la web');
+        return null; // Fallback a localStorage
       }
+
       const csvText = await response.text();
-      
-      // Usar parseCSV genérico
-      const data = parseCSV(csvText);
+      const mensajes = [];
 
-      return data.map((row, index) => {
-        const timestamp = row.Timestamp || row.timestamp;
-        const chapa = row.Chapa || row.chapa;
-        const texto = row.Texto || row.texto;
+      // Parser CSV robusto que maneja campos multilinea (con saltos de línea dentro de comillas)
+      let inQuotes = false;
+      let currentField = '';
+      let currentRow = [];
+      let skipHeader = true;
 
-        let parsedDate = new Date(timestamp);
-        const id = parsedDate.getTime() && !isNaN(parsedDate.getTime())
-          ? parsedDate.getTime()
-          : Date.now() - index * 1000;
+      for (let i = 0; i < csvText.length; i++) {
+        const char = csvText[i];
+        const nextChar = csvText[i + 1];
 
-        return {
-          id: id,
-          timestamp: timestamp,
-          chapa: chapa,
-          texto: texto
-        };
-      }).filter(m => m.timestamp && m.chapa && m.texto); // Filtrar filas inválidas
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            // Comilla escapada ("")
+            currentField += '"';
+            i++; // Saltar la siguiente comilla
+          } else {
+            // Toggle estado de comillas
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          // Fin de campo
+          currentRow.push(currentField);
+          currentField = '';
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+          // Fin de línea (fuera de comillas)
+          if (currentField || currentRow.length > 0) {
+            currentRow.push(currentField);
+            currentField = '';
+
+            // Procesar fila completada
+            if (currentRow.length >= 3 && !skipHeader) {
+              const timestamp = currentRow[0] ? currentRow[0].trim() : '';
+              const chapa = currentRow[1] ? currentRow[1].trim() : '';
+              const texto = currentRow[2] ? currentRow[2].trim() : '';
+
+              if (timestamp && chapa && texto) {
+                // Intentar parsear el timestamp
+                let parsedDate = new Date(timestamp);
+
+                // Si el timestamp no es válido, usar timestamp falso
+                const id = parsedDate.getTime() && !isNaN(parsedDate.getTime())
+                  ? parsedDate.getTime()
+                  : Date.now() - mensajes.length * 1000;
+
+                mensajes.push({
+                  id: id,
+                  timestamp: timestamp,
+                  chapa: chapa,
+                  texto: texto
+                });
+              }
+            }
+
+            skipHeader = false; // Después de la primera fila, no saltamos más
+            currentRow = [];
+          }
+          // Saltar \r\n juntos
+          if (char === '\r' && nextChar === '\n') {
+            i++;
+          }
+        } else {
+          // Carácter normal (incluyendo \n dentro de comillas)
+          currentField += char;
+        }
+      }
+
+      // Procesar última fila si existe
+      if (currentField || currentRow.length > 0) {
+        currentRow.push(currentField);
+        if (currentRow.length >= 3 && !skipHeader) {
+          const timestamp = currentRow[0] ? currentRow[0].trim() : '';
+          const chapa = currentRow[1] ? currentRow[1].trim() : '';
+          const texto = currentRow[2] ? currentRow[2].trim() : '';
+
+          if (timestamp && chapa && texto) {
+            let parsedDate = new Date(timestamp);
+            const id = parsedDate.getTime() && !isNaN(parsedDate.getTime())
+              ? parsedDate.getTime()
+              : Date.now() - mensajes.length * 1000;
+
+            mensajes.push({
+              id: id,
+              timestamp: timestamp,
+              chapa: chapa,
+              texto: texto
+            });
+          }
+        }
+      }
+
+      console.log('✅ Mensajes del foro compartido cargados:', mensajes.length);
+      if (mensajes.length > 0) {
+        console.log('Primer mensaje:', mensajes[0]);
+      }
+      return mensajes;
 
     } catch (error) {
       console.error('❌ Error obteniendo mensajes del foro:', error);
-      return null;
+      return null; // Fallback a localStorage
     }
   },
 
   /**
    * Envía un mensaje al foro usando Google Apps Script
+   * URL del Apps Script configurada automáticamente
    */
   async enviarMensajeForo(chapa, texto) {
     try {
+      // URL del Google Apps Script Web App - Configuración automática
       let appsScriptURL = localStorage.getItem('foro_apps_script_url');
+
+      // Si no está configurada en localStorage, usar la URL por defecto
       if (!appsScriptURL || appsScriptURL === '' || appsScriptURL === 'null') {
         appsScriptURL = 'https://script.google.com/macros/s/AKfycbwL1lFFIbpq4evkRQ6W7MTfF6ywWgWaNad6mphwLHRbGkrbSXlB4eUOm-oaB50dcDnQ8g/exec';
+        // Guardar en localStorage para futuros usos
         localStorage.setItem('foro_apps_script_url', appsScriptURL);
+        console.log('✅ URL del Apps Script del foro configurada automáticamente');
       }
-      await fetch(appsScriptURL, {
-        method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
+
+      const response = await fetch(appsScriptURL, {
+        method: 'POST',
+        mode: 'no-cors', // Apps Script requiere no-cors
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          action: 'addMessage', chapa: chapa, texto: texto,
+          action: 'addMessage',
+          chapa: chapa,
+          texto: texto,
           timestamp: new Date().toISOString()
         })
       });
+
+      console.log('✅ Mensaje enviado al Apps Script del foro compartido');
       return true;
+
     } catch (error) {
       console.error('Error enviando mensaje al foro:', error);
-      return false;
+      return false; // Fallback a localStorage
     }
   },
 
   /**
-   * Obtiene usuarios desde Google Sheet para validación de login
-   * (Versión robusta, lee por cabeceras)
+   * [FRÁGIL] Obtiene usuarios desde Google Sheet para validación de login
    */
   async getUsuarios() {
     try {
       const usuariosURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1704760412&single=true&output=csv';
-      const response = await fetch(usuariosURL, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      
+
+      const response = await fetch(usuariosURL, {
+        headers: {
+          'Accept-Charset': 'utf-8'
+        },
+        cache: 'no-store' // No cachear usuarios
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Asegurar lectura UTF-8
       const buffer = await response.arrayBuffer();
       const decoder = new TextDecoder('utf-8');
       const csvText = decoder.decode(buffer);
-      
-      const data = parseCSV(csvText);
+      console.log('=== USUARIOS CSV (primeros 100 chars) ===');
+      console.log(csvText.substring(0, 100));
 
-      return data.map(row => {
-        const chapa = row.Chapa || row.chapa;
-        const contrasena = row.Contraseña || row.contraseña || row.Contrasena || row.contrasena;
-        const nombre = row.Nombre || row.nombre;
-        return {
-          chapa: chapa,
-          contrasena: contrasena,
-          nombre: nombre || `Chapa ${chapa}`
-        };
-      }).filter(u => u.chapa && u.contrasena); // Filtrar usuarios inválidos
+      const lines = csvText.split('\n').filter(line => line.trim() !== '');
+      const usuarios = [];
+
+      // Saltar header (primera línea)
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        const fields = parseCSVLine(line);
+
+        if (fields.length >= 2) {
+          const contrasena = fields[0] ? fields[0].trim() : '';
+          const chapa = fields[1] ? fields[1].trim() : '';
+          const nombre = fields[2] ? fields[2].trim() : '';  // Nueva: columna C
+
+          if (contrasena && chapa) {
+            usuarios.push({
+              chapa: chapa,
+              contrasena: contrasena,
+              nombre: nombre || `Chapa ${chapa}`  // Fallback si no hay nombre
+            });
+          }
+        }
+      }
+
+      console.log('Total usuarios cargados:', usuarios.length);
+      return usuarios;
+
     } catch (error) {
       console.error('Error obteniendo usuarios:', error);
       return [];
@@ -527,21 +806,30 @@ const SheetsAPI = {
 
   /**
    * Obtiene el nombre de un usuario por su chapa
+   * Primero busca en localStorage (cache), luego en el sheet
    */
   async getNombrePorChapa(chapa) {
     try {
+      // Buscar en cache de localStorage primero
       const usuariosCache = JSON.parse(localStorage.getItem('usuarios_cache') || '{}');
       if (usuariosCache[chapa]) {
         return usuariosCache[chapa];
       }
+
+      // Si no está en cache, obtener todos los usuarios
       const usuarios = await this.getUsuarios();
       const usuario = usuarios.find(u => u.chapa === chapa);
+
       if (usuario && usuario.nombre) {
+        // Guardar en cache
         usuariosCache[chapa] = usuario.nombre;
         localStorage.setItem('usuarios_cache', JSON.stringify(usuariosCache));
         return usuario.nombre;
       }
+
+      // Fallback
       return `Chapa ${chapa}`;
+
     } catch (error) {
       console.error('Error obteniendo nombre:', error);
       return `Chapa ${chapa}`;
@@ -549,12 +837,12 @@ const SheetsAPI = {
   },
 
   /**
-   * Obtiene TODOS los jornales de un estibador
-   * (MODIFICADO: Lee del GID_JORNALES configurado)
+   * [ROBUSTO] Obtiene TODOS los jornales de un estibador (Para el historial)
+   * Esta función lee de la pestaña GID_JORNALES
    */
   async getJornales(chapa) {
     try {
-      // Usa fetchSheetData, que lee por cabecera y usa caché
+      // Usa fetchSheetData, que es robusto y lee cabeceras
       const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_JORNALES);
 
       // Filtrar TODOS los registros por chapa
@@ -562,7 +850,7 @@ const SheetsAPI = {
         const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
         return rowChapa === chapa.toString().trim();
       }).map(row => ({
-        // Mapear por cabecera
+        // Mapea usando los nombres de cabecera esperados
         fecha: row.Fecha || row.fecha || '',
         puesto: row.Puesto || row.puesto || '',
         jornada: row.Jornada || row.jornada || '',
@@ -572,16 +860,18 @@ const SheetsAPI = {
       })).filter(item => item.fecha); // Filtrar filas sin fecha
 
       return jornalesChapa;
+
     } catch (error) {
       console.error('Error obteniendo jornales:', error);
+      // En caso de error, retornar array vacío en lugar de datos mock
       return [];
     }
   },
 
-  // --- SECCIÓN DE DATOS MOCK (FALLBACKS) ---
-
+  /**
+   * Datos mock para puertas (fallback)
+   */
   getMockPuertas() {
-    console.warn("--- USANDO DATOS MOCK PARA PUERTAS ---");
     return {
       fecha: new Date().toLocaleDateString('es-ES'),
       puertas: [
@@ -593,24 +883,45 @@ const SheetsAPI = {
       ]
     };
   },
+
+  /**
+   * Datos mock para contrataciones (fallback)
+   */
   getMockContrataciones(chapa = null) {
-    console.warn("--- USANDO DATOS MOCK PARA CONTRATACIÓN ---");
     const today = new Date().toLocaleDateString('es-ES');
     const allData = [
       { fecha: today, chapa: '221', puesto: 'Conductor de 1ª', jornada: '20-02', empresa: 'APM', buque: 'ODYSSEUS', parte: '1' },
       { fecha: today, chapa: '330', puesto: 'Conductor de 1ª', jornada: '20-02', empresa: 'APM', buque: 'ODYSSEUS', parte: '1' },
-      { fecha: today, chapa: '190', puesto: 'Especialista', jornada: '14-20', empresa: 'MSC', buque: 'MSC SARA', parte: '2' }
+      { fecha: today, chapa: '190', puesto: 'Especialista', jornada: '14-20', empresa: 'MSC', buque: 'MSC SARA', parte: '2' },
+      { fecha: today, chapa: '604', puesto: 'Trincador', jornada: '20-02', empresa: 'CSP', buque: 'CMA CGM', parte: '1' },
+      { fecha: today, chapa: '221', puesto: 'Especialista', jornada: '08-14', empresa: 'MSC', buque: 'MSC OLIVIA', parte: '2' }
     ];
-    if (chapa) return allData.filter(c => c.chapa === chapa.toString());
+
+    if (chapa) {
+      return allData.filter(c => c.chapa === chapa.toString());
+    }
     return allData;
   },
+
+  /**
+   * Datos mock para censo (fallback)
+   */
   getMockCenso() {
     console.error("--- ERROR: NO SE PUDO CARGAR CENSO, MOCK DESHABILITADO ---");
     throw new Error("El mock de Censo está deshabilitado. La carga real falló.");
   },
+
+  /**
+   * Datos mock para jornales (fallback)
+   */
   getMockJornales(chapa) {
-    console.warn("--- USANDO DATOS MOCK PARA JORNALES ---");
-    return [{ chapa: chapa, quincena: 'Oct 1-15', jornales: 7, horas: 42, nocturnos: 2, festivos: 1 }];
+    const quincenas = [
+      { quincena: 'Oct 1-15', jornales: 7, horas: 42, nocturnos: 2, festivos: 1 },
+      { quincena: 'Oct 16-31', jornales: 9, horas: 54, nocturnos: 3, festivos: 0 },
+      { quincena: 'Nov 1-15', jornales: 8, horas: 48, nocturnos: 2, festivos: 1 }
+    ];
+
+    return quincenas.map(q => ({ ...q, chapa }));
   }
 };
 
@@ -620,8 +931,7 @@ const SheetsAPI = {
 function clearSheetsCache() {
   const keys = Object.keys(localStorage);
   keys.forEach(key => {
-    // Limpiamos todo lo relacionado con sheets y datos
-    if (key.startsWith('sheet_') || key.startsWith('censo_') || key.startsWith('puertas_') || key.startsWith('contrataciones_')) {
+    if (key.startsWith('sheet_') || key.startsWith('censo_limpio_data')) {
       localStorage.removeItem(key);
     }
   });
@@ -631,3 +941,4 @@ function clearSheetsCache() {
 // Exponer API globalmente
 window.SheetsAPI = SheetsAPI;
 window.clearSheetsCache = clearSheetsCache;
+
