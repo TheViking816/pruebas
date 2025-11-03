@@ -1,963 +1,1356 @@
-/**
- * Módulo de integración con Google Sheets
- * Gestiona la obtención y parseo de datos desde Google Sheets públicas
- */
+/* Variables de colores del puerto */
+:root {
+  --puerto-blue: #0a2e5c;
+  --puerto-blue-light: #1e4a8a;
+  --puerto-blue-dark: #051937;
+  --puerto-orange: #f97316;
+  --puerto-teal: #14b8a6;
+  --puerto-green: #10b981;
+  --puerto-red: #ef4444;
+  --puerto-yellow: #f59e0b;
 
-// Configuración de las hojas de Google Sheets
-const SHEETS_CONFIG = {
-  // ID ÚNICO de la hoja de cálculo (TODAS las pestañas están en este mismo documento)
-  SHEET_ID: '1j-IaOHXoLEP4bK2hjdn2uAYy8a2chqiQSOw4Nfxoyxc',
+  --bg-main: #f1f5f9;
+  --bg-card: #ffffff;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --border-color: #e2e8f0;
 
-  // GIDs de las diferentes pestañas
-  GID_JORNALES: '1885242510',      // Pestaña: Mis Jornales
-  GID_CONTRATACION: '1304645770',  // Pestaña: Contrata_Glide
-  GID_PUERTAS: '1650839211',       // Pestaña: Puertas
-  GID_CENSO: '0'                   // Pestaña: Censo (ajustar si es necesario)
-};
+  --sidebar-width: 280px;
+  --header-height: 70px;
 
-/**
- * Construye la URL para obtener datos en formato CSV
- */
-function getSheetCSVUrl(sheetId, gid) {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
-/**
- * Parsea CSV a array de objetos
- */
-function parseCSV(csv) {
-  if (!csv || csv.trim() === '') {
-    return [];
-  }
-
-  const lines = csv.split('\n').filter(line => line.trim() !== '');
-  if (lines.length === 0) return [];
-
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-  const data = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
-    if (values.length === 0) continue;
-
-    const row = {};
-    headers.forEach((header, index) => {
-      row[header] = values[index] || '';
-    });
-    data.push(row);
-  }
-
-  return data;
+/* Reset y base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-/**
- * Parsea una línea CSV manejando comillas y comas dentro de campos
- */
-function parseCSVLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  result.push(current.trim());
-  return result;
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  line-height: 1.6;
+  overflow-x: hidden;
 }
 
-/**
- * Obtiene datos de una hoja
- */
-async function fetchSheetData(sheetId, gid, useCache = true) {
-  const cacheKey = `sheet_${sheetId}_${gid}`;
-  const cacheTimeKey = `sheet_${sheetId}_${gid}_time`;
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+/* Fondo decorativo del puerto */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(10, 46, 92, 0.03) 0%, rgba(20, 184, 166, 0.02) 100%),
+    url('https://i.imgur.com/bSOecVC.jpeg');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+}
 
-  // Verificar cache
-  if (useCache) {
-    const cached = localStorage.getItem(cacheKey);
-    const cacheTime = localStorage.getItem(cacheTimeKey);
+/* Header */
+.header-main {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background: linear-gradient(135deg, var(--puerto-blue-dark) 0%, var(--puerto-blue) 100%);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+}
 
-    if (cached && cacheTime) {
-      const age = Date.now() - parseInt(cacheTime);
-      if (age < CACHE_DURATION) {
-        return JSON.parse(cached);
-      }
-    }
+.header-content {
+  max-width: 1920px;
+  margin: 0 auto;
+  height: 100%;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo-img {
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: var(--shadow-md);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.logo-text h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.02em;
+}
+
+.logo-text p {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.menu-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.menu-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.user-chapa {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.logout-btn {
+  background: var(--puerto-red);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.logout-btn:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Sidebar */
+.sidebar {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  width: var(--sidebar-width);
+  height: calc(100vh - var(--header-height));
+  background: linear-gradient(180deg, var(--puerto-blue-dark) 0%, var(--puerto-blue) 100%);
+  box-shadow: var(--shadow-xl);
+  overflow-y: auto;
+  z-index: 900;
+  transition: transform 0.3s ease;
+}
+
+.sidebar-nav {
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-link {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border: none;
+  padding: 0.875rem 1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  border: 1px solid transparent;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  transform: translateX(5px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.nav-link.active {
+  background: linear-gradient(135deg, var(--puerto-teal) 0%, var(--puerto-blue-light) 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+  font-weight: 600;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.nav-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* Sidebar overlay para móvil */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 850;
+  display: none;
+  backdrop-filter: blur(2px);
+}
+
+.sidebar-overlay.active {
+  display: block;
+}
+
+/* Main content */
+.main-content {
+  margin-left: var(--sidebar-width);
+  margin-top: var(--header-height);
+  min-height: calc(100vh - var(--header-height));
+  position: relative;
+  z-index: 1;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Páginas */
+.page {
+  display: none;
+  animation: fadeIn 0.4s ease;
+}
+
+.page.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-
-  try {
-    const url = getSheetCSVUrl(sheetId, gid);
-    const response = await fetch(url, {
-      headers: {
-        'Accept-Charset': 'utf-8'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    // Asegurar lectura UTF-8
-    const buffer = await response.arrayBuffer();
-    const decoder = new TextDecoder('utf-8');
-    const csv = decoder.decode(buffer);
-    const data = parseCSV(csv);
-
-    // Guardar en cache
-    localStorage.setItem(cacheKey, JSON.stringify(data));
-    localStorage.setItem(cacheTimeKey, Date.now().toString());
-
-    return data;
-  } catch (error) {
-    console.error('Error fetching sheet data:', error);
-
-    // Intentar devolver datos en cache aunque estén expirados
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      console.warn('Usando datos en cache expirados debido a error en la carga');
-      return JSON.parse(cached);
-    }
-
-    throw error;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/**
- * API principal para obtener datos
- */
-const SheetsAPI = {
-  /**
-   * Obtiene las puertas desde CSV directo
-   * Basado en lógica n8n que funciona correctamente
-   * Formato: Jornada en columna índice 2, primera puerta en índice 3
-   */
-  async getPuertas() {
-    try {
-      const puertasURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrQ5bGZDNShEWi1lwx_l1EvOxC0si5kbN8GBxj34rF0FkyGVk6IZOiGk5D91_TZXBHO1mchydFvvUl/pub?gid=3770623&single=true&output=csv';
-
-      const response = await fetch(puertasURL, {
-        headers: {
-          'Accept-Charset': 'utf-8'
-        }
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Asegurar lectura UTF-8
-      const buffer = await response.arrayBuffer();
-      const decoder = new TextDecoder('utf-8');
-      const csvText = decoder.decode(buffer);
-      console.log('=== PUERTAS CSV RAW (primeros 300 chars) ===');
-      console.log(csvText.substring(0, 300));
-
-      // Dividir en líneas y limpiar
-      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l !== '');
-
-      // Definir el orden fijo de jornadas
-      const jornadasOrdenadas = ['02-08', '08-14', '14-20', '20-02', 'Festivo'];
-
-      // Inicializar objetos para almacenar las puertas de cada jornada
-      const primeraPuertaPorJornada = {};  // Puerta SP (índice 3)
-      const segundaPuertaPorJornada = {};  // Puerta OC (índice 4)
-      jornadasOrdenadas.forEach(j => {
-        primeraPuertaPorJornada[j] = '';
-        segundaPuertaPorJornada[j] = '';
-      });
-
-      let fecha = '';
-
-      // PRIMERO: Buscar la fecha en las primeras 5 líneas (sin importar el número de columnas)
-      for (let idx = 0; idx < Math.min(5, lines.length) && !fecha; idx++) {
-        const line = lines[idx];
-        const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
-
-        for (const col of columns) {
-          if (col && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(col)) {
-            // Formatear fecha: 3/11/25 → 03/11/2025
-            const parts = col.split('/');
-            const dia = parts[0].padStart(2, '0');
-            const mes = parts[1].padStart(2, '0');
-            let anio = parts[2];
-            // Convertir año de 2 dígitos a 4 dígitos
-            if (anio.length === 2) {
-              anio = '20' + anio;
-            }
-            fecha = `${dia}/${mes}/${anio}`;
-            console.log('Fecha encontrada y formateada:', fecha, 'en línea', idx);
-            break;
-          }
-        }
-      }
-
-      // SEGUNDO: Procesar las puertas
-      for (const line of lines) {
-        // Saltar líneas de advertencia
-        if (line.includes('No se admiten') || line.includes('!!')) continue;
-
-        // Dividir manualmente por comas y limpiar
-        const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
-
-        if (columns.length < 7) {
-          continue;
-        }
-
-        const rawJornada = columns[2]; // La jornada está en la columna 3 (índice 2)
-        if (!rawJornada) continue;
-
-        let jornada = rawJornada.replace(/\s+.*/, ''); // limpia "Festivo " → "Festivo"
-
-        // Solo procesar si es turno válido o Festivo
-        if (jornadasOrdenadas.includes(jornada)) {
-          // Tomar la PRIMERA puerta SP (índice 3 = columna 4)
-          const primeraPuerta = columns[3];
-          if (primeraPuerta && primeraPuerta !== '' && primeraPuertaPorJornada[jornada] === '') {
-            // Solo asignar si aún no tiene valor
-            primeraPuertaPorJornada[jornada] = primeraPuerta;
-            console.log(`Jornada ${jornada}: puerta SP ${primeraPuerta}`);
-          }
-
-          // Tomar la SEGUNDA puerta OC (índice 4 = columna 5)
-          const segundaPuerta = columns[4];
-          if (segundaPuerta && segundaPuerta !== '' && segundaPuertaPorJornada[jornada] === '') {
-            // Solo asignar si aún no tiene valor
-            segundaPuertaPorJornada[jornada] = segundaPuerta;
-            console.log(`Jornada ${jornada}: puerta OC ${segundaPuerta}`);
-          }
-        }
-      }
-
-      // Construir el array de puertas en el orden fijo
-      const puertas = jornadasOrdenadas.map(jornada => ({
-        jornada: jornada,
-        puertaSP: primeraPuertaPorJornada[jornada],
-        puertaOC: segundaPuertaPorJornada[jornada]
-      }));
-
-      console.log('=== PUERTAS FINALES ===');
-      console.log('Fecha:', fecha);
-      console.log('Puertas:', puertas);
-
-      return {
-        fecha: fecha || new Date().toLocaleDateString('es-ES'),
-        puertas: puertas
-      };
-
-    } catch (error) {
-      console.error('Error obteniendo puertas:', error);
-      return this.getMockPuertas();
-    }
-  },
-
-  /**
-   * Obtiene las asignaciones/contrataciones desde CSV directo con formato PIVOTADO
-   * Basado en lógica n8n que funciona correctamente
-   * Formato: Fecha, Jornada, Empresa, Parte, Buque, T, TC, C1, B, E
-   */
-  async getContrataciones(chapa = null) {
-    try {
-      const contratacionURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSTtbkA94xqjf81lsR7bLKKtyES2YBDKs8J2T4UrSEan7e5Z_eaptShCA78R1wqUyYyASJxmHj3gDnY/pub?gid=1388412839&single=true&output=csv';
-
-      const response = await fetch(contratacionURL);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const csvText = await response.text();
-      console.log('=== CONTRATACIÓN CSV RAW (primeros 300 chars) ===');
-      console.log(csvText.substring(0, 300));
-
-      // Dividir en líneas y limpiar
-      const lines = csvText.split('\n').map(l => l.trim()).filter(l => l !== '');
-
-      if (lines.length === 0) {
-        throw new Error('CSV vacío');
-      }
-
-      // Mapeo de especialidades (según n8n)
-      const puestoMap = {
-        'T': 'Trincador',
-        'TC': 'Trincador de Coches',
-        'C1': 'Conductor de 1a',
-        'B': 'Conductor de Coches',
-        'E': 'Especialista'
-      };
-
-      // Parsear la primera línea para obtener los índices de las columnas
-      const headerLine = lines[0];
-      const headers = [];
-      let current = '';
-      for (let i = 0; i < headerLine.length; i++) {
-        if (headerLine[i] === ',') {
-          headers.push(current);
-          current = '';
-        } else {
-          current += headerLine[i];
-        }
-      }
-      headers.push(current);
-
-      console.log('Headers:', headers);
-
-      // Encontrar índices de las columnas relevantes
-      const fechaIdx = headers.indexOf('Fecha');
-      const jornadaIdx = headers.indexOf('Jornada');
-      const empresaIdx = headers.indexOf('Empresa');
-      const parteIdx = headers.indexOf('Parte');
-      const buqueIdx = headers.indexOf('Buque');
-      const tIdx = headers.indexOf('T');
-      const tcIdx = headers.indexOf('TC');
-      const c1Idx = headers.indexOf('C1');
-      const bIdx = headers.indexOf('B');
-      const eIdx = headers.indexOf('E');
-
-      console.log('Índices:', { fechaIdx, jornadaIdx, empresaIdx, parteIdx, buqueIdx, tIdx, tcIdx, c1Idx, bIdx, eIdx });
-
-      // Procesar filas (saltar la cabecera)
-      const output = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        // Dividir manualmente la línea respetando comillas
-        const fields = [];
-        let current = '';
-        let inQuotes = false;
-        for (let j = 0; j < line.length; j++) {
-          const char = line[j];
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            fields.push(current.trim());
-            current = '';
-          } else {
-            current += char;
-          }
-        }
-        fields.push(current.trim());
-
-        // Saltar si la fila no tiene suficientes columnas
-        if (fields.length <= Math.max(eIdx, bIdx, c1Idx, tcIdx, tIdx)) continue;
-
-        // Obtener valores de las columnas clave
-        const fecha = fields[fechaIdx] || '';
-        const jornada = fields[jornadaIdx] || '';
-        const empresa = fields[empresaIdx] || '';
-        const parte = fields[parteIdx] || '';
-        const buque = fields[buqueIdx] || '';
-
-        // Iterar sobre las columnas de puestos
-        for (const [colKey, puestoNombre] of Object.entries(puestoMap)) {
-          let idx;
-          if (colKey === 'T') idx = tIdx;
-          if (colKey === 'TC') idx = tcIdx;
-          if (colKey === 'C1') idx = c1Idx;
-          if (colKey === 'B') idx = bIdx;
-          if (colKey === 'E') idx = eIdx;
-
-          const chapaValue = fields[idx];
-          if (chapaValue && chapaValue.trim() !== '') {
-            output.push({
-              fecha: fecha,
-              chapa: chapaValue.trim(),
-              puesto: puestoNombre,
-              jornada: jornada,
-              empresa: empresa,
-              buque: buque,
-              parte: parte
-            });
-          }
-        }
-      }
-
-      console.log('=== CONTRATACIONES FINALES ===');
-      console.log('Total:', output.length);
-
-      // Filtrar por chapa si se proporciona
-      if (chapa) {
-        const filtered = output.filter(c => c.chapa === chapa.toString());
-        console.log(`Contrataciones para chapa ${chapa}:`, filtered);
-        return filtered;
-      }
-
-      return output;
-
-    } catch (error) {
-      console.error('Error obteniendo contrataciones:', error);
-      return this.getMockContrataciones(chapa);
-    }
-  },
-
-  /**
-   * Obtiene el censo de disponibilidad
-   * Formato del CSV: cada chapa son 3 valores consecutivos
-   * [posición, número_chapa, color_código]
-   * Color: 4=verde, 3=azul, 2=amarillo, 1=naranja, 0=rojo
-   */
-  async getCenso() {
-    try {
-      // URL directa al CSV del censo
-      const censoURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTrMuapybwZUEGPR1vsP9p1_nlWvznyl0sPD4xWsNJ7HdXCj1ABY1EpU1um538HHZQyJtoAe5Niwrxq/pub?gid=841547354&single=true&output=csv';
-
-      const response = await fetch(censoURL);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const csvText = await response.text();
-
-      console.log('=== CENSO CSV RAW (primeros 200 chars) ===');
-      console.log(csvText.substring(0, 200));
-
-      // Parsear CSV y obtener todos los valores, eliminando vacíos
-      const allValues = csvText
-        .split(/[\n,]/)  // Dividir por saltos de línea Y comas
-        .map(v => v.trim().replace(/"/g, ''))  // Limpiar
-        .filter(v => v !== '');  // Eliminar valores vacíos
-
-      console.log('Total de valores en censo:', allValues.length);
-      console.log('Primeros 15 valores:', allValues.slice(0, 15));
-
-      // Agrupar valores de 3 en 3: [posición, chapa, color]
-      const censoItems = [];
-
-      for (let i = 0; i < allValues.length; i += 3) {
-        // Verificar que tenemos los 3 valores
-        if (i + 2 >= allValues.length) break;
-
-        const posicionStr = allValues[i];      // índice i = posición
-        const chapaStr = allValues[i + 1];     // índice i+1 = CHAPA (esto es lo que queremos mostrar)
-        const colorStr = allValues[i + 2];     // índice i+2 = código de color
-
-        // Validar que sean números válidos
-        const posNum = parseInt(posicionStr);
-        const chapaNum = parseInt(chapaStr);
-        const colorNum = parseInt(colorStr);
-
-        // Debug: ver qué estamos parseando
-        if (i < 30) { // Solo para los primeros 10 items
-          console.log(`Triplete ${i/3}: pos=${posicionStr}(${posNum}), chapa=${chapaStr}(${chapaNum}), color=${colorStr}(${colorNum})`);
-        }
-
-        if (!isNaN(posNum) && !isNaN(chapaNum) && !isNaN(colorNum)) {
-          // Validar rango de color (0-4)
-          if (colorNum >= 0 && colorNum <= 4) {
-            // IMPORTANTE: Las chapas válidas son números >= 50
-            // Posiciones son 1-535, chapas reales son como 702, 537, 918, etc.
-            // Si chapaNum es muy pequeño (< 50), probablemente sea un error
-            if (chapaNum < 50) {
-              console.warn(`Saltando chapa sospechosa: ${chapaNum} (posición: ${posNum})`);
-              continue;
-            }
-
-            // Mapear código de color a nombre
-            let color;
-            switch (colorNum) {
-              case 4: color = 'green'; break;     // Verde claro - Disponible
-              case 3: color = 'blue'; break;      // Azul claro - Limitado
-              case 2: color = 'yellow'; break;    // Amarillo - Pendiente
-              case 1: color = 'orange'; break;    // Naranja - Restricción
-              case 0: color = 'red'; break;       // Rojo - No disponible
-              default: color = 'green'; break;
-            }
-
-            censoItems.push({
-              posicion: posNum,
-              chapa: chapaNum.toString(),  // ← IMPORTANTE: Usar chapaNum, NO posNum
-              color: color
-            });
-          }
-        }
-      }
-
-      console.log('=== CENSO PROCESADO ===');
-      console.log('Total de chapas:', censoItems.length);
-      console.log('Primeras 5 chapas con sus datos completos:', censoItems.slice(0, 5));
-      console.log('Últimas 5 chapas con sus datos completos:', censoItems.slice(-5));
-
-      // Ordenar por posición ascendente (1 a 535)
-      censoItems.sort((a, b) => a.posicion - b.posicion);
-
-      // Retornar con posición, chapa y color
-      return censoItems;
-
-    } catch (error) {
-      console.error('Error obteniendo censo:', error);
-      return this.getMockCenso();
-    }
-  },
-
-  /**
-   * Obtiene la posición de una chapa específica en el censo
-   */
-  async getPosicionChapa(chapa) {
-    try {
-      const censo = await this.getCenso();
-      const item = censo.find(c => c.chapa === chapa);
-      return item ? item.posicion : null;
-    } catch (error) {
-      console.error('Error obteniendo posición de chapa:', error);
-      return null;
-    }
-  },
-
-  /**
-   * Calcula posiciones hasta contratación
-   * Hay dos censos separados:
-   * - Censo SP: posiciones 1-449
-   * - Censo OC: posiciones 450-535
-   * @param {string} chapa - Chapa del usuario
-   * @returns {number|null} - Número de posiciones hasta contratación o null si no se puede calcular
-   */
-  async getPosicionesHastaContratacion(chapa) {
-    try {
-      // Obtener posición del usuario
-      const posicionUsuario = await this.getPosicionChapa(chapa);
-      if (!posicionUsuario) {
-        return null;
-      }
-
-      // Determinar si el usuario está en censo SP o OC
-      const LIMITE_SP = 449;
-      const INICIO_OC = 450;
-      const FIN_OC = 535;
-
-      const esUsuarioSP = posicionUsuario <= LIMITE_SP;
-
-      // Obtener puertas
-      const puertas = await this.getPuertas();
-
-      // Separar puertas SP y OC
-      const puertasSP = puertas.puertas
-        .map(p => parseInt(p.puertaSP))
-        .filter(n => !isNaN(n) && n > 0);
-
-      const puertasOC = puertas.puertas
-        .map(p => parseInt(p.puertaOC))
-        .filter(n => !isNaN(n) && n > 0);
-
-      let posicionesFaltantes;
-
-      if (esUsuarioSP) {
-        // Usuario en censo SP (1-449)
-        if (puertasSP.length === 0) {
-          return null; // No hay puertas SP contratadas
-        }
-
-        const ultimaPuertaSP = Math.max(...puertasSP);
-
-        // Calcular distancia circular en censo SP
-        if (posicionUsuario > ultimaPuertaSP) {
-          // Usuario está después de la última puerta
-          posicionesFaltantes = posicionUsuario - ultimaPuertaSP;
-        } else {
-          // Usuario está antes de la última puerta (dar la vuelta en censo SP)
-          posicionesFaltantes = (LIMITE_SP - ultimaPuertaSP) + posicionUsuario;
-        }
-
-      } else {
-        // Usuario en censo OC (450-535)
-        if (puertasOC.length === 0) {
-          return null; // No hay puertas OC contratadas
-        }
-
-        const ultimaPuertaOC = Math.max(...puertasOC);
-
-        // Calcular distancia circular en censo OC
-        if (posicionUsuario > ultimaPuertaOC) {
-          // Usuario está después de la última puerta
-          posicionesFaltantes = posicionUsuario - ultimaPuertaOC;
-        } else {
-          // Usuario está antes de la última puerta (dar la vuelta en censo OC)
-          posicionesFaltantes = (FIN_OC - ultimaPuertaOC) + (posicionUsuario - INICIO_OC + 1);
-        }
-      }
-
-      return posicionesFaltantes;
-
-    } catch (error) {
-      console.error('Error calculando posiciones hasta contratación:', error);
-      return null;
-    }
-  },
-
-  /**
-   * Obtiene mensajes del foro desde Google Sheet
-   * Estructura CSV: Timestamp (col A), Chapa (col B), Texto (col C)
-   * Pestaña "foro" - GID: 464918425
-   * URL completa: https://docs.google.com/spreadsheets/d/1j-IaOHXoLEP4bK2hjdn2uAYy8a2chqiQSOw4Nfxoyxc/edit?gid=464918425
-   */
-  async getForoMensajes() {
-    try {
-      // URL del CSV del foro publicado
-      const foroURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=464918425&single=true&output=csv';
-
-      const response = await fetch(foroURL);
-      if (!response.ok) {
-        console.warn('⚠️ Foro sheet no disponible (HTTP ' + response.status + '). Asegúrate de publicar la pestaña "foro" como CSV en Archivo → Compartir → Publicar en la web');
-        return null; // Fallback a localStorage
-      }
-
-      const csvText = await response.text();
-      const mensajes = [];
-
-      // Parser CSV robusto que maneja campos multilinea (con saltos de línea dentro de comillas)
-      let inQuotes = false;
-      let currentField = '';
-      let currentRow = [];
-      let skipHeader = true;
-
-      for (let i = 0; i < csvText.length; i++) {
-        const char = csvText[i];
-        const nextChar = csvText[i + 1];
-
-        if (char === '"') {
-          if (inQuotes && nextChar === '"') {
-            // Comilla escapada ("")
-            currentField += '"';
-            i++; // Saltar la siguiente comilla
-          } else {
-            // Toggle estado de comillas
-            inQuotes = !inQuotes;
-          }
-        } else if (char === ',' && !inQuotes) {
-          // Fin de campo
-          currentRow.push(currentField);
-          currentField = '';
-        } else if ((char === '\n' || char === '\r') && !inQuotes) {
-          // Fin de línea (fuera de comillas)
-          if (currentField || currentRow.length > 0) {
-            currentRow.push(currentField);
-            currentField = '';
-
-            // Procesar fila completada
-            if (currentRow.length >= 3 && !skipHeader) {
-              const timestamp = currentRow[0] ? currentRow[0].trim() : '';
-              const chapa = currentRow[1] ? currentRow[1].trim() : '';
-              const texto = currentRow[2] ? currentRow[2].trim() : '';
-
-              if (timestamp && chapa && texto) {
-                // Intentar parsear el timestamp
-                let parsedDate = new Date(timestamp);
-
-                // Si el timestamp no es válido, usar timestamp falso
-                const id = parsedDate.getTime() && !isNaN(parsedDate.getTime())
-                  ? parsedDate.getTime()
-                  : Date.now() - mensajes.length * 1000;
-
-                mensajes.push({
-                  id: id,
-                  timestamp: timestamp,
-                  chapa: chapa,
-                  texto: texto
-                });
-              }
-            }
-
-            skipHeader = false; // Después de la primera fila, no saltamos más
-            currentRow = [];
-          }
-          // Saltar \r\n juntos
-          if (char === '\r' && nextChar === '\n') {
-            i++;
-          }
-        } else {
-          // Carácter normal (incluyendo \n dentro de comillas)
-          currentField += char;
-        }
-      }
-
-      // Procesar última fila si existe
-      if (currentField || currentRow.length > 0) {
-        currentRow.push(currentField);
-        if (currentRow.length >= 3 && !skipHeader) {
-          const timestamp = currentRow[0] ? currentRow[0].trim() : '';
-          const chapa = currentRow[1] ? currentRow[1].trim() : '';
-          const texto = currentRow[2] ? currentRow[2].trim() : '';
-
-          if (timestamp && chapa && texto) {
-            let parsedDate = new Date(timestamp);
-            const id = parsedDate.getTime() && !isNaN(parsedDate.getTime())
-              ? parsedDate.getTime()
-              : Date.now() - mensajes.length * 1000;
-
-            mensajes.push({
-              id: id,
-              timestamp: timestamp,
-              chapa: chapa,
-              texto: texto
-            });
-          }
-        }
-      }
-
-      console.log('✅ Mensajes del foro compartido cargados:', mensajes.length);
-      if (mensajes.length > 0) {
-        console.log('Primer mensaje:', mensajes[0]);
-      }
-      return mensajes;
-
-    } catch (error) {
-      console.error('❌ Error obteniendo mensajes del foro:', error);
-      return null; // Fallback a localStorage
-    }
-  },
-
-  /**
-   * Envía un mensaje al foro usando Google Apps Script
-   * URL del Apps Script configurada automáticamente
-   */
-  async enviarMensajeForo(chapa, texto) {
-    try {
-      // URL del Google Apps Script Web App - Configuración automática
-      let appsScriptURL = localStorage.getItem('foro_apps_script_url');
-
-      // Si no está configurada en localStorage, usar la URL por defecto
-      if (!appsScriptURL || appsScriptURL === '' || appsScriptURL === 'null') {
-        appsScriptURL = 'https://script.google.com/macros/s/AKfycbwL1lFFIbpq4evkRQ6W7MTfF6ywWgWaNad6mphwLHRbGkrbSXlB4eUOm-oaB50dcDnQ8g/exec';
-        // Guardar en localStorage para futuros usos
-        localStorage.setItem('foro_apps_script_url', appsScriptURL);
-        console.log('✅ URL del Apps Script del foro configurada automáticamente');
-      }
-
-      const response = await fetch(appsScriptURL, {
-        method: 'POST',
-        mode: 'no-cors', // Apps Script requiere no-cors
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'addMessage',
-          chapa: chapa,
-          texto: texto,
-          timestamp: new Date().toISOString()
-        })
-      });
-
-      console.log('✅ Mensaje enviado al Apps Script del foro compartido');
-      return true;
-
-    } catch (error) {
-      console.error('Error enviando mensaje al foro:', error);
-      return false; // Fallback a localStorage
-    }
-  },
-
-  /**
-   * Obtiene usuarios desde Google Sheet para validación de login
-   * Estructura CSV: Contraseña (columna A), Chapa (columna B), Nombre (columna C)
-   * URL: Sheet "usuarios"
-   */
-  async getUsuarios() {
-    try {
-      const usuariosURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1704760412&single=true&output=csv';
-
-      const response = await fetch(usuariosURL, {
-        headers: {
-          'Accept-Charset': 'utf-8'
-        }
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Asegurar lectura UTF-8
-      const buffer = await response.arrayBuffer();
-      const decoder = new TextDecoder('utf-8');
-      const csvText = decoder.decode(buffer);
-      console.log('=== USUARIOS CSV (primeros 100 chars) ===');
-      console.log(csvText.substring(0, 100));
-
-      const lines = csvText.split('\n').filter(line => line.trim() !== '');
-      const usuarios = [];
-
-      // Saltar header (primera línea)
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        const fields = parseCSVLine(line);
-
-        if (fields.length >= 2) {
-          const contrasena = fields[0] ? fields[0].trim() : '';
-          const chapa = fields[1] ? fields[1].trim() : '';
-          const nombre = fields[2] ? fields[2].trim() : '';  // Nueva: columna C
-
-          if (contrasena && chapa) {
-            usuarios.push({
-              chapa: chapa,
-              contrasena: contrasena,
-              nombre: nombre || `Chapa ${chapa}`  // Fallback si no hay nombre
-            });
-          }
-        }
-      }
-
-      console.log('Total usuarios cargados:', usuarios.length);
-      return usuarios;
-
-    } catch (error) {
-      console.error('Error obteniendo usuarios:', error);
-      return [];
-    }
-  },
-
-  /**
-   * Obtiene el nombre de un usuario por su chapa
-   * Primero busca en localStorage (cache), luego en el sheet
-   */
-  async getNombrePorChapa(chapa) {
-    try {
-      // Buscar en cache de localStorage primero
-      const usuariosCache = JSON.parse(localStorage.getItem('usuarios_cache') || '{}');
-      if (usuariosCache[chapa]) {
-        return usuariosCache[chapa];
-      }
-
-      // Si no está en cache, obtener todos los usuarios
-      const usuarios = await this.getUsuarios();
-      const usuario = usuarios.find(u => u.chapa === chapa);
-
-      if (usuario && usuario.nombre) {
-        // Guardar en cache
-        usuariosCache[chapa] = usuario.nombre;
-        localStorage.setItem('usuarios_cache', JSON.stringify(usuariosCache));
-        return usuario.nombre;
-      }
-
-      // Fallback
-      return `Chapa ${chapa}`;
-
-    } catch (error) {
-      console.error('Error obteniendo nombre:', error);
-      return `Chapa ${chapa}`;
-    }
-  },
-
-  /**
-   * Obtiene TODOS los jornales de un estibador
-   * Estructura: Fecha, Chapa, Puesto, Jornada, Empresa, Buque, Parte
-   */
-  async getJornales(chapa) {
-    try {
-      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_JORNALES);
-
-      // Filtrar TODOS los registros por chapa
-      const jornalesChapa = data.filter(row => {
-        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
-        return rowChapa === chapa.toString().trim();
-      }).map(row => ({
-        fecha: row.Fecha || row.fecha || '',
-        puesto: row.Puesto || row.puesto || '',
-        jornada: row.Jornada || row.jornada || '',
-        empresa: row.Empresa || row.empresa || '',
-        buque: row.Buque || row.buque || '',
-        parte: row.Parte || row.parte || ''
-      })).filter(item => item.fecha); // Filtrar filas sin fecha
-
-      return jornalesChapa;
-
-    } catch (error) {
-      console.error('Error obteniendo jornales:', error);
-      // En caso de error, retornar array vacío en lugar de datos mock
-      return [];
-    }
-  },
-
-  /**
-   * Datos mock para puertas (fallback)
-   */
-  getMockPuertas() {
-    return {
-      fecha: new Date().toLocaleDateString('es-ES'),
-      puertas: [
-        { jornada: '02-08', puertaSP: '153', puertaOC: '498' },
-        { jornada: '08-14', puertaSP: '153', puertaOC: '498' },
-        { jornada: '14-20', puertaSP: '', puertaOC: '' },
-        { jornada: '20-02', puertaSP: '', puertaOC: '' },
-        { jornada: 'Festivo', puertaSP: '173', puertaOC: '528' }
-      ]
-    };
-  },
-
-  /**
-   * Datos mock para contrataciones (fallback)
-   */
-  getMockContrataciones(chapa = null) {
-    const today = new Date().toLocaleDateString('es-ES');
-    const allData = [
-      { fecha: today, chapa: '221', puesto: 'Conductor de 1ª', jornada: '20-02', empresa: 'APM', buque: 'ODYSSEUS', parte: '1' },
-      { fecha: today, chapa: '330', puesto: 'Conductor de 1ª', jornada: '20-02', empresa: 'APM', buque: 'ODYSSEUS', parte: '1' },
-      { fecha: today, chapa: '190', puesto: 'Especialista', jornada: '14-20', empresa: 'MSC', buque: 'MSC SARA', parte: '2' },
-      { fecha: today, chapa: '604', puesto: 'Trincador', jornada: '20-02', empresa: 'CSP', buque: 'CMA CGM', parte: '1' },
-      { fecha: today, chapa: '221', puesto: 'Especialista', jornada: '08-14', empresa: 'MSC', buque: 'MSC OLIVIA', parte: '2' }
-    ];
-
-    if (chapa) {
-      return allData.filter(c => c.chapa === chapa.toString());
-    }
-    return allData;
-  },
-
-  /**
-   * Datos mock para censo (fallback)
-   */
-  getMockCenso() {
-    return [
-      { chapa: '702', color: 'green' }, { chapa: '51', color: 'red' }, { chapa: '160', color: 'red' },
-      { chapa: '101', color: 'green' }, { chapa: '475', color: 'green' }, { chapa: '537', color: 'green' },
-      { chapa: '52', color: 'orange' }, { chapa: '164', color: 'red' }, { chapa: '115', color: 'green' },
-      { chapa: '151', color: 'green' }, { chapa: '918', color: 'green' }, { chapa: '103', color: 'yellow' },
-      { chapa: '995', color: 'green' }, { chapa: '152', color: 'green' }, { chapa: '465', color: 'green' },
-      { chapa: '667', color: 'green' }, { chapa: '54', color: 'red' }, { chapa: '434', color: 'green' },
-      { chapa: '104', color: 'yellow' }, { chapa: '742', color: 'green' }, { chapa: '221', color: 'green' },
-      { chapa: '330', color: 'green' }, { chapa: '190', color: 'green' }, { chapa: '604', color: 'green' },
-      { chapa: '123', color: 'green' }, { chapa: '456', color: 'yellow' }, { chapa: '789', color: 'red' },
-      { chapa: '234', color: 'green' }, { chapa: '567', color: 'green' }, { chapa: '890', color: 'orange' }
-    ];
-  },
-
-  /**
-   * Datos mock para jornales (fallback)
-   */
-  getMockJornales(chapa) {
-    const quincenas = [
-      { quincena: 'Oct 1-15', jornales: 7, horas: 42, nocturnos: 2, festivos: 1 },
-      { quincena: 'Oct 16-31', jornales: 9, horas: 54, nocturnos: 3, festivos: 0 },
-      { quincena: 'Nov 1-15', jornales: 8, horas: 48, nocturnos: 2, festivos: 1 }
-    ];
-
-    return quincenas.map(q => ({ ...q, chapa }));
-  }
-};
-
-/**
- * Limpia el cache de datos
- */
-function clearSheetsCache() {
-  const keys = Object.keys(localStorage);
-  keys.forEach(key => {
-    if (key.startsWith('sheet_')) {
-      localStorage.removeItem(key);
-    }
-  });
-  console.log('Cache de sheets limpiado');
+/* Page Hero */
+.page-hero {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  overflow: hidden;
+  margin-bottom: 2rem;
 }
 
-// Exponer API globalmente
-window.SheetsAPI = SheetsAPI;
-window.clearSheetsCache = clearSheetsCache;
+.page-hero.small {
+  height: 200px;
+}
+
+.page-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.page-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(10, 46, 92, 0.8) 0%, rgba(20, 184, 166, 0.6) 100%);
+  z-index: 1;
+}
+
+.page-hero-content {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.page-hero-content h2 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  letter-spacing: -0.02em;
+}
+
+.page-hero-content p {
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Login Page */
+.login-container {
+  min-height: calc(100vh - var(--header-height));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.login-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  max-width: 480px;
+  width: 100%;
+  border: 1px solid var(--border-color);
+}
+
+.login-hero {
+  position: relative;
+  height: 240px;
+  overflow: hidden;
+}
+
+.login-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.login-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(10, 46, 92, 0.85) 0%, rgba(20, 184, 166, 0.7) 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.login-hero-overlay h2 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.login-hero-overlay p {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+.login-form {
+  padding: 2rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background: var(--bg-main);
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--puerto-teal);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.error-message {
+  color: var(--puerto-red);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  display: none;
+}
+
+.error-message.active {
+  display: block;
+}
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, var(--puerto-teal) 0%, var(--puerto-blue) 100%);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-large {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+}
+
+/* Welcome Card */
+.welcome-card {
+  background: linear-gradient(135deg, var(--puerto-blue) 0%, var(--puerto-teal) 100%);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  color: white;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.welcome-card h3 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.welcome-card p {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Dashboard Grid */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.dashboard-card {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--puerto-teal);
+}
+
+.dashboard-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.dashboard-card-icon svg {
+  width: 24px;
+  height: 24px;
+  color: white;
+}
+
+.dashboard-card-icon.blue { background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); }
+.dashboard-card-icon.green { background: linear-gradient(135deg, #10b981 0%, #047857 100%); }
+.dashboard-card-icon.orange { background: linear-gradient(135deg, #f97316 0%, #c2410c 100%); }
+.dashboard-card-icon.purple { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); }
+.dashboard-card-icon.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+.dashboard-card-icon.teal { background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); }
+
+.dashboard-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.dashboard-card p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.dashboard-card img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-top: auto;
+}
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--puerto-teal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-state p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* Data Table */
+.data-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+}
+
+.data-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table thead {
+  background: linear-gradient(135deg, var(--puerto-blue-dark) 0%, var(--puerto-blue) 100%);
+}
+
+.data-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.data-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-main);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Empty State */
+.empty-state {
+  background: white;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  border: 2px dashed var(--border-color);
+}
+
+.empty-state svg {
+  width: 64px;
+  height: 64px;
+  color: var(--text-secondary);
+  margin: 0 auto 1rem;
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  border-left: 4px solid var(--puerto-teal);
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-card.green { border-left-color: var(--puerto-green); }
+.stat-card.blue { border-left-color: var(--puerto-blue); }
+.stat-card.orange { border-left-color: var(--puerto-orange); }
+.stat-card.yellow { border-left-color: var(--puerto-yellow); }
+
+/* Puertas Grid */
+.puertas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.puerta-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  border: 2px solid var(--border-color);
+  transition: all 0.3s ease;
+}
+
+.puerta-card.empty {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-color: var(--puerto-red);
+}
+
+.puerta-card.assigned {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: var(--puerto-green);
+}
+
+.puerta-jornada {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.puerta-numero {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--puerto-green);
+}
+
+.puerta-card.empty .puerta-numero {
+  color: var(--puerto-red);
+}
+
+.puerta-status {
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+/* Nuevos estilos para puertas SP y OC */
+.puerta-detalles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.puerta-linea {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+}
+
+.puerta-label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.puerta-linea .puerta-numero {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--puerto-blue);
+}
+
+/* Censo Legend */
+.censo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: center;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+}
+
+.censo-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.censo-legend-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-sm);
+}
+
+.censo-legend-color.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.censo-legend-color.blue { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+.censo-legend-color.yellow { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.censo-legend-color.orange { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+.censo-legend-color.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+
+/* Censo Grid - Optimizado para 535 chapas */
+.censo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.censo-item {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: white;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  min-height: 55px;
+}
+
+.censo-item:hover {
+  transform: scale(1.1);
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+}
+
+.censo-item.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.censo-item.blue { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+.censo-item.yellow { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.censo-item.orange { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+.censo-item.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+
+/* Puertas Section Titles */
+.puertas-section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 3px solid var(--puerto-blue);
+}
+
+.puerta-card.festiva {
+  border-color: var(--puerto-orange);
+  border-width: 3px;
+}
+
+/* Responsive adjustments for censo */
+@media (max-width: 1200px) {
+  .censo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  }
+  .censo-item {
+    font-size: 0.8rem;
+    min-height: 50px;
+  }
+}
+
+@media (max-width: 768px) {
+  .censo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
+    gap: 0.4rem;
+  }
+  .censo-item {
+    font-size: 0.75rem;
+    min-height: 45px;
+  }
+}
+
+@media (max-width: 480px) {
+  .censo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 0.3rem;
+  }
+  .censo-item {
+    font-size: 0.7rem;
+    min-height: 40px;
+    border-radius: 6px;
+  }
+}
+
+/* Enlaces */
+.enlaces-section {
+  margin-bottom: 2.5rem;
+}
+
+.enlaces-section h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.enlaces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.enlace-btn {
+  background: white;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1rem;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  color: var(--text-primary);
+  display: block;
+}
+
+.enlace-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+.enlace-btn.blue { border-color: #3b82f6; color: #1e40af; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); }
+.enlace-btn.yellow { border-color: #f59e0b; color: #92400e; background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); }
+.enlace-btn.orange { border-color: #f97316; color: #9a3412; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); }
+.enlace-btn.red { border-color: #ef4444; color: #991b1b; background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); }
+.enlace-btn.green { border-color: #10b981; color: #065f46; background: linear-gradient(135deg, #f0fdf4 0%, #d1fae5 100%); }
+.enlace-btn.gray { border-color: #6b7280; color: #374151; background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%); }
+
+/* Noticias */
+.noticia-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-md);
+  border-left: 4px solid var(--puerto-blue);
+  transition: all 0.3s ease;
+}
+
+.noticia-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateX(5px);
+}
+
+.noticia-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.noticia-titulo {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.noticia-fecha {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.noticia-contenido {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+
+/* Foro */
+.foro-container {
+  padding-bottom: 120px !important;
+}
+
+.foro-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.foro-message {
+  display: flex;
+  gap: 1rem;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.foro-message.own {
+  flex-direction: row-reverse;
+}
+
+.foro-message-content {
+  max-width: 70%;
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+}
+
+.foro-message.own .foro-message-content {
+  background: linear-gradient(135deg, var(--puerto-blue) 0%, var(--puerto-teal) 100%);
+  color: white;
+  border: none;
+}
+
+.foro-message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  gap: 1rem;
+}
+
+.foro-message-chapa {
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.foro-message.own .foro-message-chapa {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.foro-message-time {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.foro-message.own .foro-message-time {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.foro-message-text {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.foro-message.own .foro-message-text {
+  color: white;
+}
+
+/* Foro Composer */
+.foro-composer {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  background: white;
+  border-top: 2px solid var(--border-color);
+  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  padding: 1rem;
+}
+
+.foro-composer-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+#foro-input {
+  flex: 1;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.875rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: none;
+  transition: all 0.3s ease;
+}
+
+#foro-input:focus {
+  outline: none;
+  border-color: var(--puerto-teal);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+
+  .sidebar.active {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+
+  .foro-composer {
+    left: 0;
+  }
+
+  .page-hero-content h2 {
+    font-size: 1.75rem;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .foro-message-content {
+    max-width: 85%;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-chapa {
+    display: none;
+  }
+
+  .logo-text p {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .page-hero {
+    height: 180px;
+  }
+
+  .page-hero.small {
+    height: 140px;
+  }
+
+  .page-hero-content h2 {
+    font-size: 1.5rem;
+  }
+
+  .page-hero-content p {
+    font-size: 0.9rem;
+  }
+
+  .censo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  }
+}
+
+/* Utilidades */
+.hidden {
+  display: none !important;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.mt-4 { margin-top: 1rem; }
+.mb-4 { margin-bottom: 1rem; }
+
+/* Scrollbar personalizada */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--puerto-blue-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--puerto-blue);
+}
+
+/* Progress bar para jornales */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--puerto-blue) 0%, var(--puerto-teal) 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+/* Settings button */
+.settings-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem;
+}
+
+.settings-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--puerto-blue);
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.modal-footer {
+  padding: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.success-message {
+  color: var(--puerto-green);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  display: none;
+}
+
+.success-message.active {
+  display: block;
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--text-secondary);
+  color: white;
+}
