@@ -34,7 +34,7 @@ const ENLACES_DATA = [
   { titulo: '¿Qué hago en caso de accidente?', url: 'https://drive.google.com/file/d/1Jei371j-lI95VTkBzm2XVfOxofjxvzbh/view', categoria: 'Seguridad', color: 'red' },
 
   // Información
-  { titulo: 'Censo Actualizado', url: 'https://drive.google.com/file/d/1yIqMMJCRTyS8GZglMLTnR01A4MLU-spf/view', categoria: 'Información', color: 'green' },
+  { titulo: 'Censo do', url: 'https://drive.google.com/file/d/1yIqMMJCRTyS8GZglMLTnR01A4MLU-spf/view', categoria: 'Información', color: 'green' },
   { titulo: 'Calendario de Pago', url: 'https://drive.google.com/file/d/1bovGdc1Fb6VRHrru1DrJOsSjbSEhFZgN/view', categoria: 'Información', color: 'green' },
   { titulo: 'Teléfonos Terminales', url: 'https://drive.google.com/file/d/1KxLm_X_0JdUEJF7JUuIvNNleU-PTqUgv/view', categoria: 'Información', color: 'green' },
   { titulo: 'Tabla Contratación', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSTtbkA94xqjf81lsR7bLKKtyES2YBDKs8J2T4UrSEan7e5Z_eaptShCA78R1wqUyYyASJxmHj3gDnY/pubhtml?gid=1388412839&single=true', categoria: 'Información', color: 'green' },
@@ -47,13 +47,21 @@ const ENLACES_DATA = [
 
 // Noticias y avisos - Añadir contenido real aquí
 const NOTICIAS_DATA = [
-  // --- NUEVAS NOTICIAS (Añadidas el 02/11/2025) ---
   {
+    titulo: '🚀 ¡Nueva Función: Posición en la Puerta!',
+    fecha: '02/11/2025', // <-- Recuerda ajustar la fecha si lo necesitas
+    contenido: `Ahora puedes ver en la pantalla de "Dashboard" (justo debajo de tu nombre) a cuántas posiciones estás de la última puerta contratada.
+    <ul style="list-style-type: disc; margin-left: 20px; margin-top: 10px;">
+      <li style="margin-bottom: 5px;">El sistema calcula tu distancia automáticamente.</li>
+      <li style="margin-bottom: 5px;">Importante: El cálculo tiene en cuenta si perteneces al censo de <b>SP</b> (Servicio Público) o al de <b>OC</b> (Operaciones Complementarias) y te compara con la puerta correspondiente a tu censo.</li>
+      <li>Así sabrás de un vistazo cuánto falta para tu próxima contratación.</li>
+    </ul>`
+},
+   {
     titulo: '📢 Actualización en Puertas: Añadida Puerta OC',
     fecha: '02/11/2025',
     contenido: `Se ha mejorado la visualización de las puertas. Ahora la tabla muestra tres columnas para mayor claridad:
-    <ul style="list-style-type: disc; margin-left: 20px; margin-top: 10px;">
-      <li style="margin-bottom: 5px;">Se extrae la segunda puerta (columna índice 4) del CSV como "Puerta OC".</li>
+    <ul style="list-style-type: disc; margin-left: 20px; margin-top: 10px;">      
       <li style="margin-bottom: 5px;">La <b>Puerta SP</b> se muestra en color <span style="color: #10b981; font-weight: 600;">Verde</span>.</li>
       <li style="margin-bottom: 5px;">La <b>Puerta OC</b> se muestra en color <span style="color: #0a2e5c; font-weight: 600;">Azul</span>.</li>
       <li>Este formato se aplica tanto a puertas laborables como festivas.</li>
@@ -90,6 +98,7 @@ const NOTICIAS_DATA = [
     fecha: '01/11/2025',
     contenido: 'Se ha mejorado el sistema de jornales. Ahora puedes exportar a CSV y ver tus jornales organizados por quincenas.'
   }
+
 ];
 
 /**
@@ -114,7 +123,7 @@ async function initializeApp() {
   // Verificar si hay sesión guardada
   const storedChapa = localStorage.getItem('currentChapa');
   if (storedChapa) {
-    // Obtener nombre actualizado del sheet
+    // Obtener nombre do del sheet
     const nombre = await SheetsAPI.getNombrePorChapa(storedChapa);
     loginUser(storedChapa, nombre);
   } else {
@@ -338,12 +347,12 @@ function loginUser(chapa, nombre = null) {
   localStorage.setItem('currentChapa', chapa);
   localStorage.setItem('currentUserName', AppState.currentUserName);
 
-  // Actualizar cache de usuarios para el foro
+  // r cache de usuarios para el foro
   const usuariosCache = JSON.parse(localStorage.getItem('usuarios_cache') || '{}');
   usuariosCache[chapa] = AppState.currentUserName;
   localStorage.setItem('usuarios_cache', JSON.stringify(usuariosCache));
 
-  // Actualizar UI
+  // r UI
   updateUIForAuthenticatedUser();
 
   // Navegar al dashboard
@@ -360,10 +369,41 @@ function updateUIForAuthenticatedUser() {
   if (userInfo) userInfo.classList.remove('hidden');
   if (userChapa) userChapa.textContent = AppState.currentUserName || `Chapa ${AppState.currentUser}`;
 
-  // Actualizar mensaje de bienvenida
+  // Actualizar mensaje de bienvenida con posiciones hasta contratación
   const welcomeMsg = document.getElementById('welcome-message');
   if (welcomeMsg) {
-    welcomeMsg.textContent = `Bienvenido, ${AppState.currentUserName || `Chapa ${AppState.currentUser}`}`;
+    const nombreUsuario = AppState.currentUserName || `Chapa ${AppState.currentUser}`;
+    welcomeMsg.textContent = `Bienvenido, ${nombreUsuario}`;
+
+    // Obtener y mostrar posiciones hasta contratación
+    SheetsAPI.getPosicionesHastaContratacion(AppState.currentUser)
+      .then(posiciones => {
+        if (posiciones !== null) {
+          const posicionInfo = document.createElement('span');
+          posicionInfo.style.display = 'block';
+          posicionInfo.style.marginTop = '0.5rem';
+          posicionInfo.style.fontSize = '0.95rem';
+          posicionInfo.style.color = '#FFFFFF'; // <-- MODIFICADO A BLANCO
+          posicionInfo.style.fontWeight = '600';
+
+          if (posiciones === 0) {
+            posicionInfo.innerHTML = '🎉 ¡Estás en la última puerta contratada!';
+          } else {
+            // <-- MODIFICADO A BLANCO y negrita más fuerte
+            posicionInfo.innerHTML = `📍 Estás a <strong style="color: #FFFFFF; font-weight: 800;">${posiciones}</strong> posiciones de la puerta`;
+          }
+
+          // Limpiar cualquier span anterior y agregar el nuevo
+          const existingSpan = welcomeMsg.querySelector('span');
+          if (existingSpan) {
+            existingSpan.remove();
+          }
+          welcomeMsg.appendChild(posicionInfo);
+        }
+      })
+      .catch(error => {
+        console.error('Error obteniendo posiciones:', error);
+      });
   }
 }
 
@@ -486,24 +526,41 @@ async function handlePasswordChange() {
     const passwordOverrides = JSON.parse(localStorage.getItem('password_overrides') || '{}');
     const customPassword = passwordOverrides[chapa];
 
+    console.log('🔐 Verificando contraseña actual...');
+    console.log('Chapa:', chapa);
+    console.log('¿Tiene contraseña personalizada?', !!customPassword);
+
     let isCurrentPasswordValid = false;
 
     if (customPassword) {
       // Si ya tiene una contraseña personalizada, validar contra ella
+      console.log('Validando contra contraseña personalizada');
       isCurrentPasswordValid = (currentPassword === customPassword);
+      console.log('¿Contraseña válida?', isCurrentPasswordValid);
     } else {
       // Si no tiene contraseña personalizada, validar contra el CSV
+      console.log('Validando contra contraseña del CSV');
       const usuarios = await SheetsAPI.getUsuarios();
       const usuario = usuarios.find(u => u.chapa === chapa);
 
-      if (usuario && usuario.contrasena === currentPassword) {
-        isCurrentPasswordValid = true;
+      if (usuario) {
+        console.log('Usuario encontrado en CSV');
+        console.log('Contraseña del CSV:', usuario.contrasena);
+        console.log('Contraseña ingresada:', currentPassword);
+        console.log('¿Coinciden?', usuario.contrasena === currentPassword);
+        if (usuario.contrasena === currentPassword) {
+          isCurrentPasswordValid = true;
+        }
+      } else {
+        console.log('Usuario NO encontrado en CSV');
       }
     }
 
     if (!isCurrentPasswordValid) {
       throw new Error('La contraseña actual es incorrecta');
     }
+
+    console.log('✅ Contraseña actual verificada correctamente');
 
     // Guardar nueva contraseña en localStorage
     passwordOverrides[chapa] = newPassword;
@@ -1723,3 +1780,5 @@ function escapeHtml(text) {
 // Exponer funciones globalmente si es necesario
 window.AppState = AppState;
 window.navigateTo = navigateTo;
+
+
