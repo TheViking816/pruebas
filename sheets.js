@@ -494,16 +494,106 @@ const SheetsAPI = {
       // Ordenar por posición ascendente (1 a 535)
       censoItems.sort((a, b) => a.posicion - b.posicion);
 
-      // Retornar solo chapa y color para la visualización
-      const result = censoItems.map(item => ({ chapa: item.chapa, color: item.color }));
-
-      console.log('Primeras 5 chapas en resultado final:', result.slice(0, 5));
-
-      return result;
+      // Retornar con posición, chapa y color
+      return censoItems;
 
     } catch (error) {
       console.error('Error obteniendo censo:', error);
       return this.getMockCenso();
+    }
+  },
+
+  /**
+   * Obtiene la posición de una chapa específica en el censo
+   */
+  async getPosicionChapa(chapa) {
+    try {
+      const censo = await this.getCenso();
+      const item = censo.find(c => c.chapa === chapa);
+      return item ? item.posicion : null;
+    } catch (error) {
+      console.error('Error obteniendo posición de chapa:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Calcula posiciones hasta contratación
+   * Hay dos censos separados:
+   * - Censo SP: posiciones 1-449
+   * - Censo OC: posiciones 450-535
+   * @param {string} chapa - Chapa del usuario
+   * @returns {number|null} - Número de posiciones hasta contratación o null si no se puede calcular
+   */
+  async getPosicionesHastaContratacion(chapa) {
+    try {
+      // Obtener posición del usuario
+      const posicionUsuario = await this.getPosicionChapa(chapa);
+      if (!posicionUsuario) {
+        return null;
+      }
+
+      // Determinar si el usuario está en censo SP o OC
+      const LIMITE_SP = 449;
+      const INICIO_OC = 450;
+      const FIN_OC = 535;
+
+      const esUsuarioSP = posicionUsuario <= LIMITE_SP;
+
+      // Obtener puertas
+      const puertas = await this.getPuertas();
+
+      // Separar puertas SP y OC
+      const puertasSP = puertas.puertas
+        .map(p => parseInt(p.puertaSP))
+        .filter(n => !isNaN(n) && n > 0);
+
+      const puertasOC = puertas.puertas
+        .map(p => parseInt(p.puertaOC))
+        .filter(n => !isNaN(n) && n > 0);
+
+      let posicionesFaltantes;
+
+      if (esUsuarioSP) {
+        // Usuario en censo SP (1-449)
+        if (puertasSP.length === 0) {
+          return null; // No hay puertas SP contratadas
+        }
+
+        const ultimaPuertaSP = Math.max(...puertasSP);
+
+        // Calcular distancia circular en censo SP
+        if (posicionUsuario > ultimaPuertaSP) {
+          // Usuario está después de la última puerta
+          posicionesFaltantes = posicionUsuario - ultimaPuertaSP;
+        } else {
+          // Usuario está antes de la última puerta (dar la vuelta en censo SP)
+          posicionesFaltantes = (LIMITE_SP - ultimaPuertaSP) + posicionUsuario;
+        }
+
+      } else {
+        // Usuario en censo OC (450-535)
+        if (puertasOC.length === 0) {
+          return null; // No hay puertas OC contratadas
+        }
+
+        const ultimaPuertaOC = Math.max(...puertasOC);
+
+        // Calcular distancia circular en censo OC
+        if (posicionUsuario > ultimaPuertaOC) {
+          // Usuario está después de la última puerta
+          posicionesFaltantes = posicionUsuario - ultimaPuertaOC;
+        } else {
+          // Usuario está antes de la última puerta (dar la vuelta en censo OC)
+          posicionesFaltantes = (FIN_OC - ultimaPuertaOC) + (posicionUsuario - INICIO_OC + 1);
+        }
+      }
+
+      return posicionesFaltantes;
+
+    } catch (error) {
+      console.error('Error calculando posiciones hasta contratación:', error);
+      return null;
     }
   },
 
@@ -678,12 +768,19 @@ const SheetsAPI = {
     try {
       const usuariosURL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1704760412&single=true&output=csv';
 
-      const response = await fetch(usuariosURL);
+      const response = await fetch(usuariosURL, {
+        headers: {
+          'Accept-Charset': 'utf-8'
+        }
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const csvText = await response.text();
+      // Asegurar lectura UTF-8
+      const buffer = await response.arrayBuffer();
+      const decoder = new TextDecoder('utf-8');
+      const csvText = decoder.decode(buffer);
       console.log('=== USUARIOS CSV (primeros 100 chars) ===');
       console.log(csvText.substring(0, 100));
 
