@@ -18,11 +18,24 @@ const SHEETS_CONFIG = {
 
   // GIDs de las diferentes pestañas
   GID_JORNALES: '1885242510',      // Pestaña: Mis Jornales
+  GID_JORNALES_HISTORICO: '418043978',  // Pestaña: Jornales_historico (NUEVA)
+  GID_JORNALES_HISTORICO_ACUMULADO: '1604874350',  // Pestaña: Jornales_Historico_Acumulado (HISTÓRICO ROBUSTO)
   GID_CONTRATACION: '1304645770',  // Pestaña: Contrata_Glide
   GID_PUERTAS: '1650839211',       // Pestaña: Puertas (No se usa, getPuertas usa URL hardcodeada)
-  
+  GID_MAPEO_PUESTOS: '418043978',  // Pestaña: MAPEO_PUESTOS (Para Sueldómetro)
+  GID_TABLA_SALARIOS: '1710373929', // Pestaña: TABLA_SALARIOS (Para Sueldómetro)
+  GID_CONFIGURACION_USUARIO: '988244680', // Pestaña: Configuracion_Usuario (IRPF)
+  GID_PRIMAS_PERSONALIZADAS: '1977235036', // Pestaña: Primas_Personalizadas
+
   // URL de la hoja "censo_limpio"
-  URL_CENSO_LIMPIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1216182924&single=true&output=csv'
+  URL_CENSO_LIMPIO: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcJ5Irxl93zwDqehuLW7-MsuVtphRDtmF8Rwp-yueqcAYRfgrTtEdKDwX8WKkJj1m0rVJc8AncGN_A/pub?gid=1216182924&single=true&output=csv',
+
+  // URLs del Sueldómetro (Añadidas para que las funciones las usen)
+  URL_MAPEO_PUESTOS: 'https://docs.google.com/spreadsheets/d/1j-IaOHXoLEP4bK2hjdn2uAYy8a2chqiQSOw4Nfxoyxc/export?format=csv&gid=418043978',
+  URL_TABLA_SALARIOS: 'https://docs.google.com/spreadsheets/d/1j-IaOHXoLEP4bK2hjdn2uAYy8a2chqiQSOw4Nfxoyxc/export?format=csv&gid=1710373929',
+
+  // URL del Apps Script (Web App deployada) - ACTUALIZADA
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxgwhFR-rb-Lqs9YMPnGEbaLVzVepnGJg3EkkVSNDVCSMaB3p2S2AqNcxHruIzsaHxaNA/exec'
 };
 
 /**
@@ -516,78 +529,153 @@ const SheetsAPI = {
    * Calcula posiciones hasta contratación
    * (Actualizado para usar el nuevo getPosicionChapa y el nuevo getPuertas)
    */
+  // ... (el resto del archivo sheets.js se mantiene igual)
+
+  /**
+   * NUEVA FUNCIÓN: Determina la última jornada contratada desde CSV
+   *
+   * CAMBIO FUNDAMENTAL: Se basa en los DATOS del CSV de puertas, NO en la hora del sistema.
+   *
+   * Funcionamiento:
+   * 1. Lee todas las puertas del CSV
+   * 2. Recorre el ciclo de jornadas en orden de contratación (02-08, 08-14, 14-20, 20-02)
+   * 3. La última jornada que tenga datos es la última contratada
+   * 4. Devuelve la puerta desde donde empezará la siguiente contratación
+   *
+   * Ejemplo:
+   * - Si en el CSV: 02-08 tiene puerta 100, 08-14 tiene puerta 400, 14-20 vacío, 20-02 vacío
+   * - Última contratada: 08-14
+   * - Retorna: puerta 400 (la última puerta contratada)
+   *
+   * @param {Array} puertas - Array de puertas del CSV
+   * @param {boolean} esSP - true si es censo SP, false si es OC
+   * @returns {number|null} La puerta de la última jornada contratada, o null si no hay datos
+   */
+  detectarUltimaJornadaContratada(puertas, esSP) {
+    // Orden de contratación de jornadas
+    const ordenJornadas = ['02-08', '08-14', '14-20', '20-02'];
+
+    let ultimaPuerta = null;
+    let ultimaJornada = null;
+
+    // Recorrer en orden de contratación
+    for (const jornada of ordenJornadas) {
+      const puertaData = puertas.find(p => p.jornada === jornada);
+
+      if (puertaData) {
+        const puertaValue = esSP ? puertaData.puertaSP : puertaData.puertaOC;
+        const puertaNum = parseInt(puertaValue);
+
+        // Si esta jornada tiene datos (puerta válida), es una jornada contratada
+        if (puertaValue && puertaValue.trim() !== '' && !isNaN(puertaNum) && puertaNum > 0) {
+          ultimaPuerta = puertaNum;
+          ultimaJornada = jornada;
+        }
+      }
+    }
+
+    if (ultimaJornada) {
+      console.log(`✅ Última jornada contratada (${esSP ? 'SP' : 'OC'}): ${ultimaJornada} - Puerta: ${ultimaPuerta}`);
+    } else {
+      console.log(`⚠️ No se encontraron jornadas contratadas (${esSP ? 'SP' : 'OC'})`);
+    }
+
+    return ultimaPuerta;
+  },
+
+  /**
+   * Calcula posiciones hasta contratación (Laborable y Festiva)
+   * ACTUALIZADO: Ahora detecta la última jornada contratada desde el CSV
+   * Devuelve un objeto: { laborable: X, festiva: Y }
+   */
   async getPosicionesHastaContratacion(chapa) {
     try {
-      // Obtener posición del usuario
+      // 1. Obtener Posición del Usuario y Tipo de Censo
       const posicionUsuario = await this.getPosicionChapa(chapa);
       if (!posicionUsuario) {
         return null;
       }
 
-      // Determinar si el usuario está en censo SP o OC
       const LIMITE_SP = 449;
       const INICIO_OC = 450;
       const FIN_OC = 535;
 
       const esUsuarioSP = posicionUsuario <= LIMITE_SP;
 
-      // Obtener puertas
+      // 2. Obtener Puertas
       const puertasResult = await this.getPuertas();
-      const puertas = puertasResult.puertas; 
+      const puertas = puertasResult.puertas;
 
-      // Separar puertas SP y OC
-      const puertasSP = puertas
-        .map(p => parseInt(p.puertaSP))
-        .filter(n => !isNaN(n) && n > 0);
+      // --- 3. CÁLCULO PARA PUERTAS LABORABLES ---
+      // Filtrar solo puertas laborables (excluir Festivo)
+      const puertasLaborables = puertas.filter(p => p.jornada !== 'Festivo');
 
-      const puertasOC = puertas
-        .map(p => parseInt(p.puertaOC))
-        .filter(n => !isNaN(n) && n > 0);
+      let posicionesLaborable = null;
 
-      let posicionesFaltantes;
+      // NUEVA LÓGICA: Detectar última jornada contratada desde CSV
+      const ultimaPuertaLaborable = this.detectarUltimaJornadaContratada(puertasLaborables, esUsuarioSP);
 
-      if (esUsuarioSP) {
-        // Usuario en censo SP (1-449)
-        if (puertasSP.length === 0) {
-          return null; // No hay puertas SP contratadas
-        }
-
-        const ultimaPuertaSP = Math.max(...puertasSP);
-
-        // Calcular distancia circular en censo SP
-        if (posicionUsuario > ultimaPuertaSP) {
-          // Usuario está después de la última puerta
-          posicionesFaltantes = posicionUsuario - ultimaPuertaSP;
+      if (ultimaPuertaLaborable !== null) {
+        if (esUsuarioSP) {
+          // Usuario SP
+          if (posicionUsuario > ultimaPuertaLaborable) {
+            posicionesLaborable = posicionUsuario - ultimaPuertaLaborable;
+          } else {
+            posicionesLaborable = (LIMITE_SP - ultimaPuertaLaborable) + posicionUsuario;
+          }
         } else {
-          // Usuario está antes de la última puerta (dar la vuelta en censo SP)
-          posicionesFaltantes = (LIMITE_SP - ultimaPuertaSP) + posicionUsuario;
-        }
-
-      } else {
-        // Usuario en censo OC (450-535)
-        if (puertasOC.length === 0) {
-          return null; // No hay puertas OC contratadas
-        }
-
-        const ultimaPuertaOC = Math.max(...puertasOC);
-
-        // Calcular distancia circular en censo OC
-        if (posicionUsuario > ultimaPuertaOC) {
-          // Usuario está después de la última puerta
-          posicionesFaltantes = posicionUsuario - ultimaPuertaOC;
-        } else {
-          // Usuario está antes de la última puerta (dar la vuelta en censo OC)
-          posicionesFaltantes = (FIN_OC - ultimaPuertaOC) + (posicionUsuario - INICIO_OC + 1);
+          // Usuario OC
+          if (posicionUsuario > ultimaPuertaLaborable) {
+            posicionesLaborable = posicionUsuario - ultimaPuertaLaborable;
+          } else {
+            posicionesLaborable = (FIN_OC - ultimaPuertaLaborable) + (posicionUsuario - INICIO_OC + 1);
+          }
         }
       }
 
-      return posicionesFaltantes;
+      // --- 4. CÁLCULO PARA PUERTAS FESTIVAS ---
+      const puertasFestivas = puertas.filter(p => p.jornada === 'Festivo');
+
+      let posicionesFestiva = null;
+
+      if (puertasFestivas.length > 0) {
+        // Para festivos, seguimos usando la lógica de máximo ya que solo hay una jornada festiva
+        const puertasFest = puertasFestivas
+          .map(p => parseInt(esUsuarioSP ? p.puertaSP : p.puertaOC))
+          .filter(n => !isNaN(n) && n > 0);
+
+        if (puertasFest.length > 0) {
+          const ultimaPuertaFest = Math.max(...puertasFest);
+
+          if (esUsuarioSP) {
+            if (posicionUsuario > ultimaPuertaFest) {
+              posicionesFestiva = posicionUsuario - ultimaPuertaFest;
+            } else {
+              posicionesFestiva = (LIMITE_SP - ultimaPuertaFest) + posicionUsuario;
+            }
+          } else {
+            if (posicionUsuario > ultimaPuertaFest) {
+              posicionesFestiva = posicionUsuario - ultimaPuertaFest;
+            } else {
+              posicionesFestiva = (FIN_OC - ultimaPuertaFest) + (posicionUsuario - INICIO_OC + 1);
+            }
+          }
+        }
+      }
+
+      // 5. Devolver el objeto con ambos resultados
+      return {
+        laborable: posicionesLaborable,
+        festiva: posicionesFestiva
+      };
 
     } catch (error) {
       console.error('Error calculando posiciones hasta contratación:', error);
       return null;
     }
   },
+
+  // ... (el resto de funciones de sheets.js se mantienen igual)
 
   /**
    * [FRÁGIL] Obtiene mensajes del foro desde Google Sheet
@@ -719,10 +807,10 @@ const SheetsAPI = {
 
       // Si no está configurada en localStorage, usar la URL por defecto
       if (!appsScriptURL || appsScriptURL === '' || appsScriptURL === 'null') {
-        appsScriptURL = 'https://script.google.com/macros/s/AKfycbwL1lFFIbpq4evkRQ6W7MTfF6ywWgWaNad6mphwLHRbGkrbSXlB4eUOm-oaB50dcDnQ8g/exec';
+        appsScriptURL = SHEETS_CONFIG.APPS_SCRIPT_URL;
         // Guardar en localStorage para futuros usos
         localStorage.setItem('foro_apps_script_url', appsScriptURL);
-        console.log('✅ URL del Apps Script del foro configurada automáticamente');
+        console.log('✅ URL del Apps Script configurada automáticamente');
       }
 
       const response = await fetch(appsScriptURL, {
@@ -745,6 +833,111 @@ const SheetsAPI = {
     } catch (error) {
       console.error('Error enviando mensaje al foro:', error);
       return false; // Fallback a localStorage
+    }
+  },
+
+  /**
+   * Cambia la contraseña de un usuario vía Apps Script
+   * Esto actualiza el Google Sheet directamente
+   */
+  async cambiarContrasenaAppsScript(chapa, nuevaContrasena) {
+    try {
+      // URL del Google Apps Script Web App
+      let appsScriptURL = localStorage.getItem('foro_apps_script_url');
+
+      if (!appsScriptURL || appsScriptURL === '' || appsScriptURL === 'null') {
+        appsScriptURL = SHEETS_CONFIG.APPS_SCRIPT_URL;
+      }
+
+      console.log('🔐 Enviando cambio de contraseña a Apps Script...');
+
+      const response = await fetch(appsScriptURL, {
+        method: 'POST',
+        mode: 'no-cors', // Apps Script requiere no-cors
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'changePassword',
+          chapa: chapa,
+          newPassword: nuevaContrasena
+        })
+      });
+
+      console.log('✅ Contraseña actualizada en Google Sheets vía Apps Script');
+      return { success: true };
+
+    } catch (error) {
+      console.error('Error cambiando contraseña en Apps Script:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Sincroniza jornales al backup en Google Sheets
+   * Envía todos los jornales de un usuario para guardarlos en Jornales_Historico
+   */
+  async sincronizarJornalesBackup(chapa, jornales) {
+    try {
+      let appsScriptURL = localStorage.getItem('foro_apps_script_url');
+
+      if (!appsScriptURL || appsScriptURL === '' || appsScriptURL === 'null') {
+        appsScriptURL = SHEETS_CONFIG.APPS_SCRIPT_URL;
+      }
+
+      console.log(`📤 Sincronizando ${jornales.length} jornales al backup...`);
+
+      await fetch(appsScriptURL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'sincronizarJornales',
+          chapa: chapa,
+          jornales: jornales
+        })
+      });
+
+      console.log('✅ Jornales sincronizados al backup en Google Sheets');
+      return { success: true };
+
+    } catch (error) {
+      console.error('Error sincronizando jornales:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Obtiene los jornales del backup en Google Sheets
+   * Lee desde la pestaña Jornales_Historico
+   */
+  async obtenerJornalesBackup(chapa) {
+    try {
+      // Usar la misma función que getJornalesHistorico
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_JORNALES_HISTORICO);
+
+      // Filtrar por chapa
+      const jornalesChapa = data.filter(row => {
+        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
+        return rowChapa === chapa.toString().trim();
+      }).map(row => ({
+        chapa: row.Chapa || row.chapa || '',
+        fecha: row.Fecha || row.fecha || '',
+        puesto: row.Puesto || row.puesto || row.Puesto_Contratacion || row.puesto_contratacion || '',
+        jornada: row.Jornada || row.jornada || '',
+        empresa: row.Empresa || row.empresa || '',
+        buque: row.Buque || row.buque || '',
+        parte: row.Parte || row.parte || ''
+      })).filter(item => item.fecha);
+
+      console.log(`📥 Obtenidos ${jornalesChapa.length} jornales del backup`);
+      return jornalesChapa;
+
+    } catch (error) {
+      console.error('Error obteniendo jornales del backup:', error);
+      return [];
     }
   },
 
@@ -869,6 +1062,197 @@ const SheetsAPI = {
   },
 
   /**
+   * [ROBUSTO] Obtiene jornales históricos desde la hoja Jornales_historico
+   * Columnas esperadas: Chapa, Fecha, Puesto, Jornada, Empresa, Buque, Parte, Logo_Empresa_URL
+   */
+  async getJornalesHistorico(chapa) {
+    try {
+      // Usa fetchSheetData, que es robusto y lee cabeceras
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_JORNALES_HISTORICO);
+
+      // Filtrar TODOS los registros por chapa
+      const jornalesChapa = data.filter(row => {
+        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
+        return rowChapa === chapa.toString().trim();
+      }).map(row => ({
+        // Mapea usando los nombres de cabecera esperados
+        chapa: row.Chapa || row.chapa || '',
+        fecha: row.Fecha || row.fecha || '',
+        puesto: row.Puesto || row.puesto || '',
+        jornada: row.Jornada || row.jornada || '',
+        empresa: row.Empresa || row.empresa || '',
+        buque: row.Buque || row.buque || '',
+        parte: row.Parte || row.parte || '',
+        logo_empresa_url: row.Logo_Empresa_URL || row.logo_empresa_url || ''
+      })).filter(item => item.fecha); // Filtrar filas sin fecha
+
+      console.log(`Jornales históricos para chapa ${chapa}:`, jornalesChapa.length);
+      return jornalesChapa;
+
+    } catch (error) {
+      console.error('Error obteniendo jornales históricos:', error);
+      return [];
+    }
+  },
+
+  /**
+   * [ROBUSTO] Obtiene contrataciones desde la hoja contrata_glide
+   * Columnas esperadas: Fecha, Chapa, Puesto_Contratacion, Jornada, Empresa, Buque, Parte, Logo_Empresa_URL
+   */
+  async getContrataGlide(chapa = null) {
+    try {
+      // Usa fetchSheetData, que es robusto y lee cabeceras
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_CONTRATACION, false); // No usar cache para contrataciones
+
+      // Mapear todas las filas
+      const contrataciones = data.map(row => ({
+        fecha: row.Fecha || row.fecha || '',
+        chapa: (row.Chapa || row.chapa || '').toString().trim(),
+        puesto: row.Puesto_Contratacion || row.puesto_contratacion || row.Puesto || row.puesto || '',
+        jornada: row.Jornada || row.jornada || '',
+        empresa: row.Empresa || row.empresa || '',
+        buque: row.Buque || row.buque || '',
+        parte: row.Parte || row.parte || '',
+        logo_empresa_url: row.Logo_Empresa_URL || row.logo_empresa_url || ''
+      })).filter(item => item.fecha && item.chapa); // Filtrar filas sin fecha o chapa
+
+      // Filtrar por chapa si se proporciona
+      if (chapa) {
+        const filtered = contrataciones.filter(c => c.chapa === chapa.toString().trim());
+        console.log(`Contrataciones glide para chapa ${chapa}:`, filtered.length);
+        return filtered;
+      }
+
+      console.log('Total contrataciones glide:', contrataciones.length);
+      return contrataciones;
+
+    } catch (error) {
+      console.error('Error obteniendo contrataciones glide:', error);
+      return [];
+    }
+  },
+
+  /**
+   * [ROBUSTO] Obtiene jornales desde el histórico acumulado (Jornales_Historico_Acumulado)
+   * Esta pestaña se alimenta automáticamente cada hora desde contrata_glide vía Apps Script
+   * AHORA TAMBIÉN INCLUYE JORNALES MANUALES (con columna Origen = "MANUAL")
+   * Columnas: Fecha, Chapa, Puesto_Contratacion, Jornada, Empresa, Buque, Parte, Origen
+   */
+  async getJornalesHistoricoAcumulado(chapa) {
+    try {
+      // Usa fetchSheetData, robusto y lee cabeceras
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_JORNALES_HISTORICO_ACUMULADO, false); // No cache
+
+      // Filtrar por chapa y mapear
+      const jornalesChapa = data.filter(row => {
+        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
+        return rowChapa === chapa.toString().trim();
+      }).map(row => {
+        const origen = (row.Origen || row.origen || '').toString().trim();
+        const esManual = origen === 'MANUAL';
+
+        return {
+          chapa: row.Chapa || row.chapa || '',
+          fecha: row.Fecha || row.fecha || '',
+          puesto: row.Puesto_Contratacion || row.puesto_contratacion || row.Puesto || row.puesto || '',
+          jornada: row.Jornada || row.jornada || '',
+          empresa: row.Empresa || row.empresa || '',
+          buque: row.Buque || row.buque || '',
+          parte: row.Parte || row.parte || '',
+          manual: esManual, // Marcar si es manual
+          origen: origen
+        };
+      }).filter(item => item.fecha && item.jornada); // Filtrar filas sin fecha o jornada
+
+      const manuales = jornalesChapa.filter(j => j.manual).length;
+      console.log(`✅ Jornales históricos acumulados para chapa ${chapa}: ${jornalesChapa.length} (${manuales} manuales)`);
+      return jornalesChapa;
+
+    } catch (error) {
+      console.error('❌ Error obteniendo jornales históricos acumulados:', error);
+      return [];
+    }
+  },
+
+  /**
+   * [ROBUSTO] Obtiene el mapeo de puestos (Puesto → Grupo_Salarial + Tipo_Operativa)
+   * Para el Sueldómetro
+   * Columnas esperadas: Puesto, Grupo_Salarial, Tipo_Operativa
+   */
+  async getMapeoPuestos() {
+    try {
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_MAPEO_PUESTOS);
+
+      console.log('📋 Datos raw de mapeo_puestos:', data.slice(0, 3)); // Primeros 3 registros
+
+      // Mapear los datos con las columnas esperadas
+      const mapeo = data.map(row => {
+        let grupoSalarial = row.Grupo_Salarial || row.grupo_salarial || '';
+
+        // Normalizar "Grupo 1" → "G1", "Grupo 2" → "G2"
+        if (grupoSalarial.includes('1')) grupoSalarial = 'G1';
+        else if (grupoSalarial.includes('2')) grupoSalarial = 'G2';
+
+        return {
+          puesto: row.Puesto || row.puesto || '',
+          grupo_salarial: grupoSalarial,
+          tipo_operativa: row.Tipo_Operativa || row.tipo_operativa || ''
+        };
+      }).filter(item => item.puesto && item.grupo_salarial && item.tipo_operativa);
+
+      console.log(`✅ Mapeo de puestos cargado: ${mapeo.length} registros`);
+      if (mapeo.length > 0) {
+        console.log('📝 Ejemplo de mapeo:', mapeo[0]);
+      }
+      return mapeo;
+
+    } catch (error) {
+      console.error('❌ Error obteniendo mapeo de puestos:', error);
+      return [];
+    }
+  },
+
+  /**
+   * [ROBUSTO] Obtiene la tabla salarial (Clave_Jornada → Salarios base y primas)
+   * Para el Sueldómetro
+   * Columnas esperadas: Clave_Jornada, Jornal_Base_G1, Jornal_Base_G2, Prima_Minima_Coches, Coef_Prima_Mayor120
+   */
+  async getTablaSalarial() {
+    try {
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_TABLA_SALARIOS);
+
+      console.log('📋 Datos raw de tabla_salarios:', data.slice(0, 3)); // Primeros 3 registros
+
+      // Función auxiliar para parsear números europeos (coma decimal)
+      const parseEuropeanFloat = (value) => {
+        if (!value) return 0;
+        const str = value.toString().replace(',', '.');
+        return parseFloat(str) || 0;
+      };
+
+      // Mapear los datos con las columnas esperadas
+      const tablaSalarial = data.map(row => ({
+        clave_jornada: row.Clave_Jornada || row.clave_jornada || '',
+        jornal_base_g1: parseEuropeanFloat(row.Jornal_Base_G1 || row.jornal_base_g1),
+        jornal_base_g2: parseEuropeanFloat(row.Jornal_Base_G2 || row.jornal_base_g2),
+        prima_minima_coches: parseEuropeanFloat(row.Prima_Minima_Coches || row.prima_minima_coches),
+        coef_prima_menor120: parseEuropeanFloat(row.Coef_Prima_Menor120 || row.coef_prima_menor120),
+        coef_prima_mayor120: parseEuropeanFloat(row.Coef_Prima_Mayor120 || row.coef_prima_mayor120)
+      })).filter(item => item.clave_jornada);
+
+      console.log(`✅ Tabla salarial cargada: ${tablaSalarial.length} registros`);
+      if (tablaSalarial.length > 0) {
+        console.log('📝 Ejemplo de tabla salarial:', tablaSalarial[0]);
+      }
+      return tablaSalarial;
+
+    } catch (error) {
+      console.error('❌ Error obteniendo tabla salarial:', error);
+      return [];
+    }
+  },
+
+  /**
    * Datos mock para puertas (fallback)
    */
   getMockPuertas() {
@@ -922,6 +1306,197 @@ const SheetsAPI = {
     ];
 
     return quincenas.map(q => ({ ...q, chapa }));
+  },
+
+  /**
+   * Guarda la configuración del usuario (IRPF) en Google Sheets
+   */
+  async saveUserConfig(chapa, irpf) {
+    try {
+      await fetch(SHEETS_CONFIG.APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Evitar error CORS
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveUserConfig',
+          chapa: chapa,
+          irpf: irpf
+        })
+      });
+
+      // Con mode: 'no-cors' no podemos leer la respuesta, pero asumimos éxito si no hay error
+      console.log('✅ IRPF enviado a Sheets (no-cors mode)');
+      return true;
+    } catch (error) {
+      console.error('❌ Error en saveUserConfig:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Recupera la configuración del usuario (IRPF) desde CSV público
+   * Lee directamente desde Configuracion_Usuario via CSV (sin CORS)
+   */
+  async getUserConfig(chapa) {
+    try {
+      // Leer desde CSV público
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_CONFIGURACION_USUARIO, false);
+
+      // Buscar configuración del usuario
+      const config = data.find(row => {
+        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
+        return rowChapa === chapa.toString().trim();
+      });
+
+      if (config) {
+        const irpf = parseFloat(config.IRPF_Porcentaje || config.irpf_porcentaje || 15);
+        console.log(`✅ IRPF recuperado de Sheets para chapa ${chapa}: ${irpf}%`);
+
+        // Guardar en localStorage como caché
+        localStorage.setItem(`irpf_${chapa}`, irpf.toString());
+
+        return irpf;
+      } else {
+        console.log(`ℹ️ IRPF no encontrado en Sheets para chapa ${chapa}, usando defecto`);
+        return 15; // Defecto
+      }
+    } catch (error) {
+      console.error('❌ Error en getUserConfig:', error);
+
+      // Fallback a localStorage
+      const irpf = localStorage.getItem(`irpf_${chapa}`);
+      if (irpf !== null && irpf !== 'null') {
+        console.log('📂 IRPF recuperado de localStorage (fallback):', irpf);
+        return parseFloat(irpf);
+      }
+
+      return 15; // Defecto
+    }
+  },
+
+  /**
+   * Guarda datos personalizados de un jornal en Google Sheets
+   * Incluye: prima, movimientos, relevo, remate
+   */
+  async savePrimaPersonalizada(chapa, fecha, jornada, prima, movimientos = null, relevo = 0, remate = 0) {
+    try {
+      await fetch(SHEETS_CONFIG.APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Evitar error CORS
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'savePrimaPersonalizada',
+          chapa: chapa,
+          fecha: fecha,
+          jornada: jornada,
+          prima: prima,
+          movimientos: movimientos,
+          relevo: relevo,
+          remate: remate
+        })
+      });
+
+      // Con mode: 'no-cors' no podemos leer la respuesta, pero asumimos éxito si no hay error
+      console.log(`✅ Datos enviados a Sheets: ${fecha} ${jornada} (no-cors mode)`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error en savePrimaPersonalizada:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Recupera todas las primas personalizadas del usuario desde CSV público
+   * Lee directamente desde Primas_Personalizadas via CSV (sin CORS)
+   */
+  async getPrimasPersonalizadas(chapa) {
+    try {
+      // Leer desde CSV público
+      const data = await fetchSheetData(SHEETS_CONFIG.SHEET_ID, SHEETS_CONFIG.GID_PRIMAS_PERSONALIZADAS, false);
+
+      // Filtrar por chapa y mapear
+      const primas = data.filter(row => {
+        const rowChapa = (row.Chapa || row.chapa || '').toString().trim();
+        return rowChapa === chapa.toString().trim();
+      }).map(row => ({
+        fecha: row.Fecha || row.fecha || '',
+        jornada: row.Jornada || row.jornada || '',
+        prima: parseFloat(row.Prima_Personalizada || row.prima_personalizada || 0),
+        movimientos: parseFloat(row.Movimientos_Personalizados || row.movimientos_personalizados || 0),
+        relevo: parseFloat(row.Relevo || row.relevo || 0),
+        remate: parseFloat(row.Remate || row.remate || 0)
+      }));
+
+      console.log(`✅ ${primas.length} primas recuperadas de Sheets para chapa ${chapa}`);
+
+      // Guardar en localStorage como caché
+      const primasObj = {};
+      primas.forEach(p => {
+        const key = `${p.fecha}_${p.jornada}`;
+        primasObj[key] = p;
+      });
+      localStorage.setItem('primas_personalizadas', JSON.stringify(primasObj));
+
+      return primas;
+    } catch (error) {
+      console.error('❌ Error en getPrimasPersonalizadas:', error);
+
+      // Fallback a localStorage
+      const primas = localStorage.getItem('primas_personalizadas') || '{}';
+      const primasObj = JSON.parse(primas);
+      const primasArray = Object.values(primasObj);
+
+      console.log(`📂 ${primasArray.length} primas recuperadas de localStorage (fallback)`);
+      return primasArray;
+    }
+  },
+
+  /**
+   * Guarda un jornal manual en Google Sheets
+   */
+  async saveJornalManual(chapa, fecha, jornada, tipo_dia, puesto, empresa, buque = '--', parte = '1') {
+    try {
+      await fetch(SHEETS_CONFIG.APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveJornalManual',
+          chapa: chapa,
+          fecha: fecha,
+          jornada: jornada,
+          tipo_dia: tipo_dia,
+          puesto: puesto,
+          empresa: empresa,
+          buque: buque,
+          parte: parte
+        })
+      });
+
+      console.log(`✅ Jornal manual enviado a Sheets: ${fecha} ${jornada} (no-cors mode)`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error en saveJornalManual:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Recupera todos los jornales manuales del usuario desde localStorage
+   * NOTA: Se guarda en Sheets como backup pero se lee desde localStorage por CORS
+   */
+  async getJornalesManuales(chapa) {
+    try {
+      // Leer desde localStorage (fuente principal)
+      const historico = JSON.parse(localStorage.getItem('jornales_historico') || '[]');
+      const jornalesManuales = historico.filter(j => j.manual === true && j.chapa === chapa);
+
+      console.log(`✅ ${jornalesManuales.length} jornales manuales recuperados de localStorage`);
+      return jornalesManuales;
+    } catch (error) {
+      console.error('❌ Error en getJornalesManuales:', error);
+      return [];
+    }
   }
 };
 
@@ -941,4 +1516,9 @@ function clearSheetsCache() {
 // Exponer API globalmente
 window.SheetsAPI = SheetsAPI;
 window.clearSheetsCache = clearSheetsCache;
+
+
+
+
+
 
